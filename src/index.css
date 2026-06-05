@@ -1,0 +1,51 @@
+@import './styles/tokens.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    margin: 0;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: 'Tajawal', 'Nunito', system-ui, sans-serif;
+    /* §3.3 Surface gradient: soft blue glow top-start + yellow glow top-end */
+    background-image:
+      radial-gradient(60rem 40rem at 100% -10%, oklch(0.62 0.16 240 / 0.08), transparent 60%),
+      radial-gradient(50rem 35rem at 0% -5%, oklch(0.86 0.16 90 / 0.1), transparent 55%);
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Quicksand', 'Tajawal', sans-serif;
+    letter-spacing: -0.01em;
+  }
+  :where([dir='rtl']) h1,
+  :where([dir='rtl']) h2,
+  :where([dir='rtl']) h3,
+  :where([dir='rtl']) h4 {
+    font-family: 'Tajawal', sans-serif;
+  }
+}
+
+@layer utilities {
+  .gradient-brand { background-image: var(--gradient-brand); }
+  .gradient-sun { background-image: var(--gradient-sun); }
+  .gradient-hope { background-image: var(--gradient-hope); }
+  .gradient-care { background-image: var(--gradient-care); }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Print: digital ID card / token */
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; }
+}

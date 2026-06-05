@@ -1,0 +1,48 @@
+/* Basma Reception — Design System tokens (§3). Light mode only.
+   oklch values are the source of truth; hex are accurate fallbacks. */
+:root {
+  --background: oklch(0.992 0.005 220); /* #F9FDFF */
+  --foreground: oklch(0.255 0.045 250); /* #112438 */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.255 0.045 250);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.255 0.045 250);
+
+  --primary: oklch(0.62 0.16 240); /* #008FD2 */
+  --primary-foreground: oklch(0.99 0.005 240);
+  --primary-soft: oklch(0.95 0.04 240); /* #DFF1FF */
+
+  --secondary: oklch(0.74 0.16 150); /* #51C672 */
+  --secondary-foreground: oklch(0.22 0.05 150);
+  --secondary-soft: oklch(0.95 0.05 150);
+
+  --accent: oklch(0.62 0.17 320); /* #B25EC5 */
+  --accent-foreground: oklch(0.99 0.005 320);
+  --accent-soft: oklch(0.95 0.04 320);
+
+  --highlight: oklch(0.86 0.16 90); /* #FACB39 */
+  --highlight-foreground: oklch(0.28 0.06 80);
+  --highlight-soft: oklch(0.97 0.06 95);
+
+  --muted: oklch(0.965 0.012 240);
+  --muted-foreground: oklch(0.52 0.03 250);
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.99 0.005 25);
+  --success: oklch(0.7 0.16 155);
+  --success-foreground: oklch(0.99 0.005 155);
+  --warning: oklch(0.82 0.15 80);
+  --warning-foreground: oklch(0.28 0.06 80);
+
+  --border: oklch(0.92 0.015 240);
+  --input: oklch(0.93 0.015 240);
+  --ring: oklch(0.62 0.16 240);
+  --radius: 1rem; /* base 16px */
+}
+
+/* Brand gradients (§3.4) — use sparingly */
+:root {
+  --gradient-brand: linear-gradient(135deg, #008fd2, #b25ec5, #51c672);
+  --gradient-sun: linear-gradient(135deg, #facb39, #f5c06a);
+  --gradient-hope: linear-gradient(135deg, #51c672, #008fd2);
+  --gradient-care: linear-gradient(135deg, #b25ec5, #008fd2);
+}
