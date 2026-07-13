@@ -1,10 +1,9 @@
 import { useMemo } from 'react'
 
-/** Deterministic mock QR pattern encoding a file number (visual only; ties to scan). */
-export function MockQR({ value, size = 132 }: { value: string; size?: number }) {
+/** Visual QR-style pattern derived from the patient file number (display only). */
+export function PatientQR({ value, size = 132 }: { value: string; size?: number }) {
   const cells = 21
   const grid = useMemo(() => {
-    // Simple deterministic hash → bit grid.
     let seed = 0
     for (let i = 0; i < value.length; i++) seed = (seed * 31 + value.charCodeAt(i)) % 2147483647
     const rand = () => {
@@ -16,7 +15,6 @@ export function MockQR({ value, size = 132 }: { value: string; size?: number }) 
       g[r] = []
       for (let c = 0; c < cells; c++) g[r][c] = rand() > 0.5
     }
-    // Finder patterns (corners) for QR look
     const place = (or: number, oc: number) => {
       for (let r = 0; r < 7; r++)
         for (let c = 0; c < 7; c++) {

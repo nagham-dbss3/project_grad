@@ -1,11 +1,12 @@
-import { useMemo } from 'react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MonitorPlay, Maximize2, Stethoscope, Sun, BedDouble, Siren, type LucideIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Logo } from '@/components/Logo'
 import { PageHeader } from '@/components/PageHeader'
+import { ListSkeleton, ErrorState } from '@/components/ui/states'
+import { Card } from '@/components/ui/card'
 import { useStore } from '@/store/useStore'
-import { buildQueues } from '@/lib/selectors'
 import { ar } from '@/i18n/ar'
 import { cn } from '@/lib/utils'
 import type { Department } from '@/mock/types'
@@ -15,15 +16,25 @@ const icons: Record<Department, LucideIcon> = { clinic: Stethoscope, dayCare: Su
 
 export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
   const navigate = useNavigate()
-  const tokens = useStore((s) => s.tokens)
-  const patients = useStore((s) => s.patients)
-  const checkIns = useStore((s) => s.checkIns)
-  const queues = useMemo(() => buildQueues(tokens, patients, checkIns), [tokens, patients, checkIns])
+  const displayQueues = useStore((s) => s.displayQueues)
+  const displayQueuesLoading = useStore((s) => s.displayQueuesLoading)
+  const displayQueuesError = useStore((s) => s.displayQueuesError)
+  const fetchDisplayQueues = useStore((s) => s.fetchDisplayQueues)
 
-  const board = (
+  useEffect(() => {
+    fetchDisplayQueues()
+    const id = setInterval(fetchDisplayQueues, 30_000)
+    return () => clearInterval(id)
+  }, [fetchDisplayQueues])
+
+  const boardContent = displayQueuesLoading ? (
+    <ListSkeleton rows={3} />
+  ) : displayQueuesError ? (
+    <Card><ErrorState onRetry={() => fetchDisplayQueues()} /></Card>
+  ) : (
     <div className={cn('grid gap-4', fullscreen ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-3')}>
       {departments.map((d) => {
-        const rows = queues[d]
+        const rows = displayQueues[d] ?? []
         const serving = rows.find((r) => r.token.status === 'called') ?? rows.find((r) => r.token.isEmergency)
         const next = rows.filter((r) => r.token.id !== serving?.token.id).slice(0, 4)
         const Icon = icons[d]
@@ -70,7 +81,7 @@ export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
           </div>
           <Button variant="outline" className="no-print" onClick={() => navigate('/waiting-screen')}>{ar.common.close}</Button>
         </div>
-        {board}
+        {boardContent}
       </div>
     )
   }
@@ -91,7 +102,7 @@ export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
         <MonitorPlay className="h-4 w-4" />
         تُعرض هذه الشاشة في صالة الانتظار — وتعكس ما سيظهر لاحقاً في تطبيق ولي الأمر.
       </div>
-      {board}
+      {boardContent}
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { EmergencyScreen } from '@/screens/EmergencyScreen'
 import { PatientsScreen } from '@/screens/PatientsScreen'
 import { PatientRecordScreen } from '@/screens/PatientRecordScreen'
 import { RegisterPatientScreen } from '@/screens/RegisterPatientScreen'
+import { RegisterConsultScreen } from '@/screens/RegisterConsultScreen'
 import { QueueScreen } from '@/screens/QueueScreen'
 import { AppointmentsScreen } from '@/screens/AppointmentsScreen'
 import { IdCardScreen } from '@/screens/IdCardScreen'
@@ -43,6 +44,7 @@ export function App() {
           <Route path="/emergency" element={<EmergencyScreen />} />
           <Route path="/patients" element={<PatientsScreen />} />
           <Route path="/patients/new" element={<RegisterPatientScreen />} />
+          <Route path="/patients/consult" element={<RegisterConsultScreen />} />
           <Route path="/patients/:fileNo" element={<PatientRecordScreen />} />
           <Route path="/patients/:fileNo/id-card" element={<IdCardScreen />} />
           <Route path="/queue" element={<QueueScreen />} />

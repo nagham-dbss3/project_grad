@@ -4,11 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/misc'
 import { useStore } from '@/store/useStore'
+import { fetchPatientRequest, ApiError } from '@/lib/api'
 import { ar } from '@/i18n/ar'
 import { cn } from '@/lib/utils'
 
-/** Mock scanner: resolves a file number (random known patient on "scan",
- *  or an exact match on manual entry). Drives the check-in / emergency loops. */
+/** Scanner pad — manual file-number lookup via API; scan opens manual entry. */
 export function ScanPad({
   onResolved,
   onUnknown,
@@ -19,28 +19,39 @@ export function ScanPad({
   startManual?: boolean
 }) {
   const patients = useStore((s) => s.patients)
-  const [scanning, setScanning] = useState(false)
+  const token = useStore((s) => s.token)
   const [manual, setManual] = useState(startManual)
   const [value, setValue] = useState('')
+  const [lookingUp, setLookingUp] = useState(false)
 
-  const scan = () => {
-    setScanning(true)
-    // Resolve a random patient who isn't currently queued (prefers a realistic arrival).
-    setTimeout(() => {
-      setScanning(false)
-      const pool = patients.filter((p) => !p.unregistered)
-      // Deterministic-ish pick based on current queue length feel
-      const pick = pool[(pool.length * 7) % pool.length] ?? pool[0]
-      onResolved(pick.fileNoBasma, 'scan')
-    }, 1100)
+  const lookupFile = async (fileNo: string): Promise<boolean> => {
+    if (patients.some((p) => p.fileNoBasma === fileNo)) return true
+    if (!token) return false
+    try {
+      await fetchPatientRequest(token, fileNo)
+      return true
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return false
+      return false
+    }
   }
 
-  const resolveManual = () => {
+  const resolveManual = async (method: 'scan' | 'manual') => {
     const fileNo = value.trim()
-    if (!fileNo) return
-    const found = patients.find((p) => p.fileNoBasma === fileNo)
-    if (found) onResolved(found.fileNoBasma, 'manual')
-    else onUnknown(fileNo)
+    if (!fileNo || lookingUp) return
+    setLookingUp(true)
+    try {
+      const local = patients.find((p) => p.fileNoBasma === fileNo)
+      if (local) {
+        onResolved(local.fileNoBasma, method)
+        return
+      }
+      const ok = await lookupFile(fileNo)
+      if (ok) onResolved(fileNo, method)
+      else onUnknown(fileNo)
+    } finally {
+      setLookingUp(false)
+    }
   }
 
   return (
@@ -48,63 +59,42 @@ export function ScanPad({
       {!manual ? (
         <div className="flex flex-col items-center text-center">
           <button
-            onClick={scan}
-            disabled={scanning}
+            type="button"
+            onClick={() => setManual(true)}
             className={cn(
-              'relative flex h-44 w-full max-w-sm items-center justify-center rounded-2xl border-2 border-dashed transition-colors',
-              scanning ? 'border-primary bg-primary-soft/50' : 'border-primary/40 bg-primary-soft/30 hover:bg-primary-soft/60',
+              'relative flex h-40 w-40 items-center justify-center rounded-2xl border-2 border-dashed border-primary/40 bg-primary-soft/50 transition-colors hover:bg-primary-soft',
             )}
+            aria-label={ar.checkin.scanBtn}
           >
-            {scanning ? (
-              <div className="flex flex-col items-center text-primary">
-                <Loader2 className="h-12 w-12 animate-spin mb-2" />
-                <span className="font-bold">{ar.checkin.scanning}</span>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center text-primary">
-                <ScanLine className="h-14 w-14 mb-2" />
-                <span className="font-bold">{ar.checkin.scanPrompt}</span>
-              </div>
-            )}
-            {scanning && (
-              <span className="absolute inset-x-6 top-1/2 h-0.5 bg-primary animate-pulse-soft" />
-            )}
+            <ScanLine className="h-16 w-16 text-primary" />
           </button>
-          <Button size="lg" className="mt-4 w-full max-w-sm" onClick={scan} disabled={scanning}>
-            <ScanLine className="h-5 w-5" />
-            {ar.checkin.scanBtn}
-          </Button>
-          <button onClick={() => setManual(true)} className="mt-3 text-sm font-bold text-primary hover:underline">
+          <p className="text-sm text-muted-foreground mt-3 max-w-xs">{ar.checkin.scanPrompt}</p>
+          <Button variant="link" className="mt-2" onClick={() => setManual(true)}>
             {ar.checkin.manualLabel}
-          </button>
+          </Button>
         </div>
       ) : (
-        <div className="max-w-sm mx-auto">
-          <Field label={ar.common.fileNo} htmlFor="manual-file">
-            <div className="flex gap-2">
+        <Field label={ar.common.fileNo}>
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                id="manual-file"
-                inputMode="numeric"
-                autoFocus
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && resolveManual()}
-                placeholder={ar.checkin.manualPlaceholder}
+                onKeyDown={(e) => e.key === 'Enter' && void resolveManual('manual')}
+                placeholder={ar.common.searchByFile}
+                className="ps-9"
+                autoFocus
               />
-              <Button onClick={resolveManual}>
-                <Search className="h-4 w-4" />
-                {ar.checkin.resolve}
-              </Button>
             </div>
-          </Field>
-          <button onClick={() => setManual(false)} className="mt-3 text-sm font-bold text-primary hover:underline">
-            <ScanLine className="inline h-4 w-4 me-1" />
-            {ar.checkin.scanBtn}
-          </button>
-          <p className="mt-3 text-xs text-muted-foreground">
-            جرّب رقماً موجوداً (مثل 10247) أو رقماً غير موجود (مثل 99999) لتجربة تفرّع التسجيل.
-          </p>
-        </div>
+            <Button disabled={!value.trim() || lookingUp} onClick={() => void resolveManual('manual')}>
+              {lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : ar.checkin.resolve}
+            </Button>
+          </div>
+          <Button variant="ghost" size="sm" className="mt-2" onClick={() => setManual(false)}>
+            {ar.common.back}
+          </Button>
+        </Field>
       )}
     </div>
   )

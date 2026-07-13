@@ -8,6 +8,59 @@ export interface QueueRow {
 
 const departments: Department[] = ['clinic', 'dayCare', 'inpatient']
 
+export const emptyQueues = (): Record<Department, QueueRow[]> => ({
+  clinic: [],
+  dayCare: [],
+  inpatient: [],
+})
+
+/** Merge API/local patient lists without duplicates (by file number). */
+export function mergePatients(existing: Patient[], incoming: Patient[]): Patient[] {
+  const map = new Map(existing.map((p) => [p.fileNoBasma, p]))
+  for (const p of incoming) map.set(p.fileNoBasma, p)
+  return Array.from(map.values())
+}
+
+/** Attach store patients to queue rows when the API omits nested `patient`. */
+export function enrichQueueRows(rows: QueueRow[], patients: Patient[]): QueueRow[] {
+  const byFile = new Map(patients.map((p) => [p.fileNoBasma, p]))
+  return rows.map((r) => ({
+    ...r,
+    patient: r.patient ?? byFile.get(r.token.patientFileNo),
+  }))
+}
+
+export function enrichAllQueues(
+  queues: Record<Department, QueueRow[]>,
+  patients: Patient[],
+): Record<Department, QueueRow[]> {
+  return {
+    clinic: enrichQueueRows(queues.clinic, patients),
+    dayCare: enrichQueueRows(queues.dayCare, patients),
+    inpatient: enrichQueueRows(queues.inpatient, patients),
+  }
+}
+
+/** Rows visible in reception queues (waiting + called; not finished). */
+export function filterActiveQueueRows(rows: QueueRow[]): QueueRow[] {
+  return rows.filter((r) => r.token.status !== 'served' && r.token.status !== 'cancelled')
+}
+
+export function filterActiveQueues(
+  queues: Record<Department, QueueRow[]>,
+): Record<Department, QueueRow[]> {
+  return {
+    clinic: filterActiveQueueRows(queues.clinic),
+    dayCare: filterActiveQueueRows(queues.dayCare),
+    inpatient: filterActiveQueueRows(queues.inpatient),
+  }
+}
+
+/** True when a patient is already called and awaiting service completion in this lane. */
+export function departmentHasCalled(rows: QueueRow[]): boolean {
+  return rows.some((r) => r.token.status === 'called')
+}
+
 /** Build an ordered queue per department: emergencies pinned on top, then by issue time. */
 export function buildQueues(
   tokens: Token[],

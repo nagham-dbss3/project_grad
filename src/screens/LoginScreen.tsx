@@ -1,44 +1,77 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Fingerprint, Lock, User, Loader2 } from 'lucide-react'
+import { Lock, User, Loader2 } from 'lucide-react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/misc'
 import { Logo } from '@/components/Logo'
 import { useStore } from '@/store/useStore'
-import { currentStaff } from '@/mock/data'
+import { loginRequest, ApiError } from '@/lib/api'
 import { ar } from '@/i18n/ar'
 
 const MAX_ATTEMPTS = 3
+const USERNAME_RE = /^[a-zA-Z0-9._-]+$/
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+interface FieldErrors {
+  username?: string
+  password?: string
+}
 
 export function LoginScreen() {
-  const login = useStore((s) => s.login)
+  const setSession = useStore((s) => s.setSession)
+  const pushToast = useStore((s) => s.pushToast)
   const navigate = useNavigate()
-  const [username, setUsername] = useState('maha')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [attempts, setAttempts] = useState(0)
   const [error, setError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [loading, setLoading] = useState(false)
   const locked = attempts >= MAX_ATTEMPTS
 
-  const submit = (e: React.FormEvent) => {
+  const validate = (): FieldErrors => {
+    const errs: FieldErrors = {}
+    const u = username.trim()
+    if (!u) errs.username = ar.login.usernameRequired
+    else if (!(u.includes('@') ? EMAIL_RE : USERNAME_RE).test(u)) errs.username = ar.login.usernameInvalid
+    if (!password) errs.password = ar.login.passwordRequired
+    else if (password.length < 8) errs.password = ar.login.passwordShort
+    return errs
+  }
+
+  const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (locked) return
+    const errs = validate()
+    if (errs.username || errs.password) {
+      setFieldErrors(errs)
+      return
+    }
+    setFieldErrors({})
     setLoading(true)
     setError('')
-    setTimeout(() => {
-      setLoading(false)
-      // Mock login: accept any non-empty username + password (demo password: 1234).
-      if (username.trim() && password.trim().length > 0) {
-        login(currentStaff)
-        navigate('/', { replace: true })
+    const email = username.includes('@') ? username.trim() : `${username.trim()}@basma.org`
+    try {
+      const { token, user } = await loginRequest(email, password)
+      setSession({ token, user })
+      navigate('/', { replace: true })
+    } catch (err) {
+      // Connection/config problem is NOT a wrong-password case — don't count it as an attempt.
+      if (err instanceof ApiError && (err.status === 0 || err.status >= 500)) {
+        setError(ar.login.connection)
+        pushToast({ variant: 'error', title: ar.login.title, description: ar.login.connection })
       } else {
         const next = attempts + 1
         setAttempts(next)
-        setError(next >= MAX_ATTEMPTS ? ar.login.locked : ar.login.invalid)
+        const msg = next >= MAX_ATTEMPTS ? ar.login.locked : ar.login.invalid
+        setError(msg)
+        pushToast({ variant: 'error', title: ar.login.title, description: msg })
       }
-    }, 600)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -52,7 +85,7 @@ export function LoginScreen() {
         <Card className="p-6">
           <h2 className="text-lg font-bold mb-4">{ar.login.title}</h2>
           <form onSubmit={submit} className="space-y-4">
-            <Field label={ar.login.username} htmlFor="username">
+            <Field label={ar.login.username} htmlFor="username" error={fieldErrors.username}>
               <div className="relative">
                 <User className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -65,7 +98,7 @@ export function LoginScreen() {
                 />
               </div>
             </Field>
-            <Field label={ar.login.password} htmlFor="password" error={error || undefined} hint={ar.login.hint}>
+            <Field label={ar.login.password} htmlFor="password" error={fieldErrors.password || error || undefined}>
               <div className="relative">
                 <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -84,20 +117,6 @@ export function LoginScreen() {
             <Button type="submit" size="lg" className="w-full" disabled={loading || locked}>
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
               {ar.login.signIn}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="w-full"
-              disabled={locked}
-              onClick={() => {
-                login(currentStaff)
-                navigate('/', { replace: true })
-              }}
-            >
-              <Fingerprint className="h-5 w-5" />
-              {ar.login.pin}
             </Button>
           </form>
         </Card>

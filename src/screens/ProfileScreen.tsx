@@ -1,16 +1,51 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { LogOut, Mail, Shield, User } from 'lucide-react'
+import { LogOut, Mail, User } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/misc'
 import { PageHeader } from '@/components/PageHeader'
 import { useStore } from '@/store/useStore'
+import { fetchMe, logoutRequest, ApiError } from '@/lib/api'
 import { ar } from '@/i18n/ar'
 
 export function ProfileScreen() {
   const navigate = useNavigate()
+  const token = useStore((s) => s.token)
   const staff = useStore((s) => s.staff)
+  const setUser = useStore((s) => s.setUser)
   const logout = useStore((s) => s.logout)
+  const pushToast = useStore((s) => s.pushToast)
+
+  useEffect(() => {
+    if (!token) return
+    let active = true
+    fetchMe(token)
+      .then((user) => {
+        if (active) setUser(user)
+      })
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 401) {
+          logout()
+          navigate('/login', { replace: true })
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [token, setUser, logout, navigate])
+
+  const handleLogout = async () => {
+    try {
+      if (token) await logoutRequest(token)
+    } catch {
+      pushToast({ variant: 'error', title: ar.common.logout, description: ar.profile.logoutError })
+    } finally {
+      logout()
+      navigate('/login', { replace: true })
+    }
+  }
+
   if (!staff) return null
 
   return (
@@ -34,21 +69,10 @@ export function ProfileScreen() {
             <Mail className="h-4 w-4 text-muted-foreground" />
             <span>{staff.contactEmail}</span>
           </div>
-          <hr />
-          <h3 className="font-bold flex items-center gap-2"><Shield className="h-4 w-4 text-primary" />{ar.profile.security}</h3>
-          <p className="text-sm text-muted-foreground">{ar.profile.securityNote}</p>
-          <Button variant="outline" disabled>تغيير كلمة المرور</Button>
         </CardContent>
       </Card>
 
-      <Button
-        variant="destructive"
-        className="w-full"
-        onClick={() => {
-          logout()
-          navigate('/login', { replace: true })
-        }}
-      >
+      <Button variant="destructive" className="w-full" onClick={handleLogout}>
         <LogOut className="h-4 w-4" />
         {ar.common.logout}
       </Button>

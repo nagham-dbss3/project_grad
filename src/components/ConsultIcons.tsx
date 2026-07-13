@@ -15,8 +15,7 @@ export const consultMeta: Record<ConsultationType, { icon: LucideIcon; tone: str
   other: { icon: Stethoscope, tone: 'bg-muted text-muted-foreground' },
 }
 
-/** Color-coded, tooltip-labeled consult badges beside a patient name (§6.4).
- *  Tapping opens "تواصل مع الطبيب المختص" (mock notify). */
+/** Color-coded, tooltip-labeled consult badges beside a patient name. */
 export function ConsultIcons({
   needs,
   patient,

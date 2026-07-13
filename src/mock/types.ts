@@ -122,8 +122,23 @@ export interface Patient {
   lifeStatus: LifeStatus
   consultationNeeds: ConsultationType[]
   registrationDate: string
-  /** True for seeded "arrived but not yet in system" patients (scan → register branch). */
+  /** True for patients who arrived but are not yet fully registered (scan → register branch). */
   unregistered?: boolean
+  /** Clinical fields from the real API (optional — not collected in the reception form). */
+  diagnosis?: string
+  currentPhase?: string
+  criticalFlags?: string[]
+  department?: Department
+}
+
+export interface ConsultRequest {
+  id: string
+  patientFileNo: string
+  consultationType: ConsultationType
+  status: string
+  notes?: string
+  requestedBy: string
+  createdAt: string
 }
 
 export type CheckInMethod = 'scan' | 'manual'
@@ -161,8 +176,10 @@ export type AppointmentStatus = 'scheduled' | 'confirmed' | 'cancelled' | 'compl
 export interface Appointment {
   id: string
   patientFileNo: string
+  patientName?: string
   department: Department
   doctorId?: string
+  doctorName?: string
   dateTime: string
   type: AppointmentType
   status: AppointmentStatus
@@ -180,11 +197,4 @@ export interface AppNotification {
   relatedPatientFileNo?: string
   timestamp: string
   isRead: boolean
-}
-
-export interface Doctor {
-  id: string
-  name: string
-  department: Department
-  specialty: string
 }

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { PhoneCall, IdCard, ChevronLeft, Siren } from 'lucide-react'
+import { PhoneCall, IdCard, ChevronLeft, Siren, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ConsultIcons } from './ConsultIcons'
 import { TokenStatusBadge } from './StatusBadges'
@@ -9,14 +9,32 @@ import { formatTime, formatWait, formatAge, cn } from '@/lib/utils'
 import type { QueueRow } from '@/lib/selectors'
 
 /** A single token row in a department lane (token #, file #, name, age, arrival, wait, status, consults). */
-export function QueueRowCard({ row, showActions = true }: { row: QueueRow; showActions?: boolean }) {
+export function QueueRowCard({
+  row,
+  showActions = true,
+  onCallToken,
+  callBlocked = false,
+}: {
+  row: QueueRow
+  showActions?: boolean
+  onCallToken?: (tokenId: string) => Promise<void>
+  callBlocked?: boolean
+}) {
   const navigate = useNavigate()
+  const getPatient = useStore((s) => s.getPatient)
   const callToken = useStore((s) => s.callToken)
+  const setTokenStatus = useStore((s) => s.setTokenStatus)
   const pushToast = useStore((s) => s.pushToast)
   const { token, patient, checkIn } = row
-  const name = patient ? `${patient.firstName} ${patient.familyName}` : 'مريض غير مسجّل'
+  const resolvedPatient = patient ?? getPatient(token.patientFileNo)
+  const fileNo = token.patientFileNo
+  const name = resolvedPatient
+    ? `${resolvedPatient.firstName} ${resolvedPatient.familyName}`.trim()
+    : 'مريض غير مسجّل'
 
-  const open = () => patient && navigate(`/patients/${patient.fileNoBasma}`)
+  const open = () => {
+    if (fileNo) navigate(`/patients/${encodeURIComponent(fileNo)}`)
+  }
 
   return (
     <div
@@ -42,11 +60,11 @@ export function QueueRowCard({ row, showActions = true }: { row: QueueRow; showA
             <button onClick={open} className="font-bold text-foreground hover:text-primary truncate text-start">
               {name}
             </button>
-            {patient && <ConsultIcons needs={patient.consultationNeeds} patient={patient} />}
+            {resolvedPatient && <ConsultIcons needs={resolvedPatient.consultationNeeds} patient={resolvedPatient} />}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="font-bold text-foreground/80">{ar.common.fileNo}: {token.patientFileNo}</span>
-            {patient && <span>{formatAge(patient.dob)}</span>}
+            {resolvedPatient && <span>{formatAge(resolvedPatient.dob)}</span>}
             {checkIn && <span>{ar.common.arrivalTime}: {formatTime(checkIn.arrivalTime)}</span>}
             <span>{ar.common.wait}: {checkIn ? formatWait(checkIn.arrivalTime) : '—'}</span>
           </div>
@@ -65,22 +83,48 @@ export function QueueRowCard({ row, showActions = true }: { row: QueueRow; showA
             <Button
               size="sm"
               variant="outline"
-              onClick={() => {
-                callToken(token.id)
-                pushToast({ variant: 'info', title: ar.common.call, description: `${token.number} — ${name}` })
+              disabled={callBlocked}
+              onClick={async () => {
+                if (callBlocked) {
+                  pushToast({ variant: 'warning', title: ar.nav.queue, description: ar.checkin.waitForServed })
+                  return
+                }
+                if (onCallToken) {
+                  await onCallToken(token.id)
+                  return
+                }
+                const ok = await callToken(token.id)
+                if (ok) {
+                  pushToast({ variant: 'info', title: ar.common.call, description: `${token.number} — ${name}` })
+                }
               }}
             >
               <PhoneCall className="h-4 w-4" />
               {ar.common.call}
             </Button>
           )}
-          {patient && (
-            <Button size="sm" variant="ghost" onClick={() => navigate(`/patients/${patient.fileNoBasma}/id-card`)}>
+          {token.status === 'called' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={async () => {
+                const ok = await setTokenStatus(token.id, 'served')
+                if (ok) {
+                  pushToast({ variant: 'success', title: ar.tokenStatus.served, description: `${token.number} — ${name}` })
+                }
+              }}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {ar.tokenStatus.served}
+            </Button>
+          )}
+          {fileNo && (
+            <Button size="sm" variant="ghost" onClick={() => navigate(`/patients/${encodeURIComponent(fileNo)}/id-card`)}>
               <IdCard className="h-4 w-4" />
               {ar.patients.printId}
             </Button>
           )}
-          <Button size="sm" variant="ghost" className="ms-auto" onClick={open}>
+          <Button size="sm" variant="ghost" className="ms-auto" onClick={open} disabled={!fileNo}>
             {ar.common.open}
             <ChevronLeft className="h-4 w-4" />
           </Button>

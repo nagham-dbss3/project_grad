@@ -1,16 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ScanLine, Ticket, CalendarPlus, IdCard, Pencil, Clock, Stethoscope } from 'lucide-react'
+import { ScanLine, Ticket, CalendarPlus, IdCard, Pencil, Clock, Stethoscope, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { EmptyState } from '@/components/ui/states'
+import { EmptyState, ListSkeleton } from '@/components/ui/states'
 import { PatientContextBar } from '@/components/PatientContextBar'
 import { ConsultLegend } from '@/components/ConsultIcons'
+import { consultRequestsForPatient, patientConsultNeeds } from '@/lib/consultRequests'
+import { consultLabel } from '@/i18n/enums'
 import { TokenStatusBadge } from '@/components/StatusBadges'
 import { AppointmentRow } from '@/components/AppointmentRow'
 import { useStore } from '@/store/useStore'
+import { patientTodayVisit, hasActiveCheckInToday } from '@/lib/patientVisit'
 import { ar } from '@/i18n/ar'
 import {
   caregiverEducationOptions,
@@ -18,22 +21,38 @@ import {
   departmentLabel,
   lifeStatusLabel,
   nationalityOptions,
-  referralCenterOptions,
-  referralCountryOptions,
-  referringSpecialtyOptions,
 } from '@/i18n/enums'
 import { formatDate, formatTime } from '@/lib/utils'
 
 export function PatientRecordScreen() {
   const { fileNo } = useParams()
   const navigate = useNavigate()
-  const getPatient = useStore((s) => s.getPatient)
+  const patient = useStore((s) => s.selectedPatient)
+  const raw = useStore((s) => s.selectedPatientRaw)
+  const patientLoading = useStore((s) => s.patientLoading)
+  const fetchPatientDetails = useStore((s) => s.fetchPatientDetails)
+  const fetchQueues = useStore((s) => s.fetchQueues)
+  const updatePatient = useStore((s) => s.updatePatient)
   const tokens = useStore((s) => s.tokens)
   const checkIns = useStore((s) => s.checkIns)
+  const queues = useStore((s) => s.queues)
   const appointments = useStore((s) => s.appointments)
+  const consultRequests = useStore((s) => s.consultRequests)
+  const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
+  const pushToast = useStore((s) => s.pushToast)
   const [tab, setTab] = useState('overview')
 
-  const patient = fileNo ? getPatient(fileNo) : undefined
+  useEffect(() => {
+    if (fileNo) {
+      fetchPatientDetails(fileNo)
+      fetchQueues()
+      void fetchPendingConsultRequests()
+    }
+  }, [fileNo, fetchPatientDetails, fetchQueues, fetchPendingConsultRequests])
+
+  if (patientLoading) {
+    return <ListSkeleton rows={6} />
+  }
 
   if (!patient) {
     return (
@@ -41,13 +60,18 @@ export function PatientRecordScreen() {
     )
   }
 
-  const todayToken = tokens.find((t) => t.patientFileNo === patient.fileNoBasma && t.status !== 'served' && t.status !== 'cancelled')
-  const todayCheckIn = checkIns.find((c) => c.patientFileNo === patient.fileNoBasma)
+  const { todayToken, todayCheckIn } = patientTodayVisit(patient.fileNoBasma, tokens, checkIns, queues)
+  const alreadyCheckedIn = hasActiveCheckInToday(patient.fileNoBasma, tokens, checkIns, queues)
   const patientAppointments = appointments.filter((a) => a.patientFileNo === patient.fileNoBasma)
   const upcoming = patientAppointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').sort((a, b) => a.dateTime.localeCompare(b.dateTime))
   const history = checkIns.filter((c) => c.patientFileNo === patient.fileNoBasma)
 
-  const opt = <T extends string>(arr: { value: T; label: string }[], v?: T) => (v ? arr.find((o) => o.value === v)?.label ?? '—' : '—')
+  // Faithful display: show what was saved, leave anything missing blank.
+  const enumLabel = <T extends string>(arr: { value: T; label: string }[], present: unknown, mapped?: T) =>
+    present ? arr.find((o) => o.value === mapped)?.label ?? '' : ''
+  const listTxt = (v?: string[] | null) => (v && v.length ? v.filter(Boolean).join(' — ') : '')
+  const dateTxt = (v?: string | null) => (v ? formatDate(v) : '')
+  const genderTxt = raw?.gender ? (raw.gender === 'male' ? ar.common.male : ar.common.female) : ''
 
   return (
     <div>
@@ -55,11 +79,40 @@ export function PatientRecordScreen() {
 
       {/* Toolbar */}
       <div className="flex flex-wrap gap-2 my-4">
-        <Button onClick={() => navigate('/check-in')}><ScanLine className="h-4 w-4" />{ar.checkin.title}</Button>
-        <Button variant="outline" onClick={() => navigate('/check-in')}><Ticket className="h-4 w-4" />{ar.record.issueToken}</Button>
-        <Button variant="outline" onClick={() => navigate(`/appointments?fileNo=${patient.fileNoBasma}`)}><CalendarPlus className="h-4 w-4" />{ar.appt.new}</Button>
+        <Button
+          disabled={alreadyCheckedIn}
+          onClick={() => {
+            if (alreadyCheckedIn) {
+              pushToast({ variant: 'warning', title: ar.checkin.title, description: ar.checkin.alreadyCheckedIn })
+              return
+            }
+            navigate(`/check-in?fileNo=${encodeURIComponent(patient.fileNoBasma)}`)
+          }}
+        >
+          <ScanLine className="h-4 w-4" />{ar.checkin.title}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={alreadyCheckedIn}
+          onClick={() => {
+            if (alreadyCheckedIn) {
+              pushToast({ variant: 'warning', title: ar.checkin.title, description: ar.checkin.alreadyCheckedIn })
+              return
+            }
+            navigate(`/check-in?fileNo=${encodeURIComponent(patient.fileNoBasma)}`)
+          }}
+        >
+          <Ticket className="h-4 w-4" />{ar.record.issueToken}
+        </Button>
+        <Button variant="outline" onClick={() => navigate(`/appointments?patient_file_no=${encodeURIComponent(patient.fileNoBasma)}`)}><CalendarPlus className="h-4 w-4" />{ar.appt.new}</Button>
         <Button variant="outline" onClick={() => navigate(`/patients/${patient.fileNoBasma}/id-card`)}><IdCard className="h-4 w-4" />{ar.idCard.title}</Button>
         <Button variant="ghost" onClick={() => navigate(`/patients/new?edit=${patient.fileNoBasma}`)}><Pencil className="h-4 w-4" />{ar.record.editAdmin}</Button>
+        {raw?.registration_status !== 'complete' && (
+          <Button variant="secondary" onClick={() => updatePatient(patient.fileNoBasma, { registration_status: 'complete' })}>
+            <CheckCircle2 className="h-4 w-4" />
+            تعليم كمكتمل
+          </Button>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
@@ -103,12 +156,50 @@ export function PatientRecordScreen() {
 
             <Card className="md:col-span-2">
               <CardContent className="p-5">
+                <h3 className="font-bold mb-3 flex items-center gap-2"><Stethoscope className="h-4 w-4 text-accent" />الحالة السريرية</h3>
+                <dl className="space-y-2 text-sm">
+                  <Row label="التشخيص" value={raw?.diagnosis ?? ''} />
+                  <Row label="المرحلة الحالية" value={raw?.current_phase ?? ''} />
+                  <Row label="القسم" value={raw?.department ? departmentLabel[patient.department ?? 'clinic'] : ''} />
+                  <Row
+                    label="مؤشّرات حرجة"
+                    value={raw?.critical_flags?.length ? (
+                      <div className="flex flex-wrap gap-1 justify-end">{raw.critical_flags.map((f) => <Badge key={f} variant="warning">{f}</Badge>)}</div>
+                    ) : ''}
+                  />
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card className="md:col-span-2">
+              <CardContent className="p-5">
                 <h3 className="font-bold mb-3 flex items-center gap-2"><Stethoscope className="h-4 w-4 text-accent" />{ar.consult.title}</h3>
-                {patient.consultationNeeds.length ? (
-                  <ConsultLegend types={patient.consultationNeeds} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">{ar.common.none}</p>
-                )}
+                {(() => {
+                  const needs = patientConsultNeeds(patient, consultRequests)
+                  const requests = consultRequestsForPatient(consultRequests, patient.fileNoBasma)
+                  if (!needs.length && !requests.length) {
+                    return <p className="text-sm text-muted-foreground">{ar.common.none}</p>
+                  }
+                  return (
+                    <div className="space-y-4">
+                      {needs.length > 0 && <ConsultLegend types={needs} />}
+                      {requests.length > 0 && (
+                        <ul className="space-y-2 text-sm">
+                          {requests.map((r) => (
+                            <li key={r.id} className="rounded-lg border bg-muted/30 p-3">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-bold">{consultLabel[r.consultationType]}</span>
+                                <Badge variant="warning">{r.status}</Badge>
+                              </div>
+                              {r.notes && <p className="text-muted-foreground mt-1">{r.notes}</p>}
+                              <p className="text-xs text-muted-foreground mt-1">{formatDate(r.createdAt)} · {formatTime(r.createdAt)}</p>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )
+                })()}
               </CardContent>
             </Card>
           </div>
@@ -121,44 +212,41 @@ export function PatientRecordScreen() {
               <h3 className="font-bold mb-3">معرّفات الملف</h3>
               <dl className="space-y-2 text-sm">
                 <Row label="رقم بسمة" value={<span className="font-bold text-primary">{patient.fileNoBasma}</span>} />
-                <Row label="رقم البيروني" value={patient.fileNoBiruni} />
-                <Row label="تاريخ الملف الإلكتروني" value={patient.electronicFileDate ? formatDate(patient.electronicFileDate) : '—'} />
-                <Row label="تاريخ فتح ملف بسمة" value={patient.basmaFileOpenDate ? formatDate(patient.basmaFileOpenDate) : '—'} />
-                <Row label="الرقم الوطني" value={patient.nationalIdPatient || '—'} />
+                <Row label="رقم البيروني" value={raw?.file_no_biruni ?? ''} />
+                <Row label="تاريخ الملف الإلكتروني" value={dateTxt(raw?.electronic_file_date)} />
+                <Row label="تاريخ فتح ملف بسمة" value={dateTxt(raw?.basma_file_open_date)} />
+                <Row label="تاريخ فتح ملف البيروني" value={dateTxt(raw?.biruni_file_open_date)} />
+                <Row label="الرقم الوطني للمريض" value={raw?.national_id_patient ?? ''} />
+                <Row label="الرقم الوطني للأب" value={raw?.national_id_father ?? ''} />
+                <Row label="حالة التسجيل" value={raw?.registration_status ?? ''} />
+                <Row label="تاريخ التسجيل" value={dateTxt(raw?.registration_date)} />
               </dl>
             </CardContent></Card>
 
             <Card><CardContent className="p-5">
               <h3 className="font-bold mb-3">المعلومات السكانية</h3>
               <dl className="space-y-2 text-sm">
-                <Row label="الأب / الأم" value={`${patient.fatherName} / ${patient.motherName || '—'}`} />
-                <Row label="الجنسية" value={opt(nationalityOptions, patient.nationality)} />
-                <Row label="مقدم الرعاية" value={opt(caregiverOptions, patient.caregiver)} />
-                <Row label="تعليم مقدم الرعاية" value={opt(caregiverEducationOptions, patient.caregiverEducation)} />
-                <Row label="الإقامة" value={`${patient.residence.governorate} — ${patient.residence.city}`} />
-                <Row label="الهاتف" value={patient.phones.father || patient.phones.mother || patient.phones.caregiver || '—'} />
+                <Row label="الاسم الكامل" value={raw?.full_name ?? ''} />
+                <Row label="اسم الأب" value={raw?.father_name ?? ''} />
+                <Row label="اسم الأم" value={raw?.mother_name ?? ''} />
+                <Row label="تاريخ الميلاد" value={dateTxt(raw?.dob)} />
+                <Row label="الجنس" value={genderTxt} />
+                <Row label="الجنسية" value={enumLabel(nationalityOptions, raw?.nationality, patient.nationality)} />
+                <Row label="مقدم الرعاية" value={enumLabel(caregiverOptions, raw?.caregiver, patient.caregiver)} />
+                <Row label="تعليم مقدم الرعاية" value={enumLabel(caregiverEducationOptions, raw?.caregiver_education, patient.caregiverEducation)} />
+                <Row label="السجل العائلي" value={listTxt(raw?.family_registry)} />
+                <Row label="الإقامة" value={listTxt(raw?.residence)} />
+                <Row label="الهواتف" value={listTxt(raw?.phones)} />
               </dl>
             </CardContent></Card>
 
-            <Card><CardContent className="p-5">
-              <h3 className="font-bold mb-3">معلومات الإحالة</h3>
+            <Card className="md:col-span-2"><CardContent className="p-5">
+              <h3 className="font-bold mb-3">الإحالة والعلاج والمتابعة</h3>
               <dl className="space-y-2 text-sm">
-                <Row label="تاريخ الإحالة" value={patient.referral.date ? formatDate(patient.referral.date) : '—'} />
-                <Row label="بلد الإحالة" value={opt(referralCountryOptions, patient.referral.country)} />
-                <Row label="المركز المحوِّل" value={opt(referralCenterOptions, patient.referral.center)} />
-                <Row label="اختصاص الطبيب" value={opt(referringSpecialtyOptions, patient.referral.referringDoctorSpecialty)} />
-              </dl>
-            </CardContent></Card>
-
-            <Card><CardContent className="p-5">
-              <h3 className="font-bold mb-3">العلاج والحالة</h3>
-              <dl className="space-y-2 text-sm">
-                <Row label="الحالة الحيوية" value={<Badge variant="secondary">{lifeStatusLabel[patient.lifeStatus]}</Badge>} />
-                <Row label="تلقى علاجاً بدئياً" value={patient.generalTreatment.receivedInitialAtBasma === 'yes' ? 'نعم' : patient.generalTreatment.receivedInitialAtBasma === 'no' ? 'لا' : '—'} />
-                <Row label="نوع العلاج البدئي" value={patient.generalTreatment.initialType === 'curative' ? 'شفاء' : patient.generalTreatment.initialType === 'palliative' ? 'تلطيفي' : '—'} />
-                {patient.lifeStatus === 'deceased' && (
-                  <Row label="تاريخ الوفاة" value={patient.followUp.deathDate ? formatDate(patient.followUp.deathDate) : '—'} />
-                )}
+                <Row label="الحالة الحيوية" value={raw?.life_status ? <Badge variant="secondary">{lifeStatusLabel[patient.lifeStatus]}</Badge> : ''} />
+                <Row label="الإحالة" value={listTxt(raw?.referral)} />
+                <Row label="العلاج العام" value={listTxt(raw?.general_treatment)} />
+                <Row label="المتابعة" value={listTxt(raw?.follow_up)} />
               </dl>
             </CardContent></Card>
           </div>
@@ -169,12 +257,12 @@ export function PatientRecordScreen() {
           <Card><CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold">{ar.record.appointments}</h3>
-              <Button size="sm" onClick={() => navigate(`/appointments?fileNo=${patient.fileNoBasma}`)}><CalendarPlus className="h-4 w-4" />{ar.appt.new}</Button>
+              <Button size="sm" onClick={() => navigate(`/appointments?patient_file_no=${encodeURIComponent(patient.fileNoBasma)}`)}><CalendarPlus className="h-4 w-4" />{ar.appt.new}</Button>
             </div>
             {patientAppointments.length ? (
               <div className="space-y-2">{patientAppointments.map((a) => <AppointmentRow key={a.id} appointment={a} showCancel />)}</div>
             ) : (
-              <EmptyState title={ar.appt.empty} action={<Button variant="outline" size="sm" onClick={() => navigate(`/appointments?fileNo=${patient.fileNoBasma}`)}>{ar.appt.new}</Button>} />
+              <EmptyState title={ar.appt.empty} action={<Button variant="outline" size="sm" onClick={() => navigate(`/appointments?patient_file_no=${encodeURIComponent(patient.fileNoBasma)}`)}>{ar.appt.new}</Button>} />
             )}
           </CardContent></Card>
         </TabsContent>

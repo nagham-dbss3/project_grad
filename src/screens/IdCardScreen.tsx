@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/ui/states'
 import { Logo } from '@/components/Logo'
 import { PageHeader } from '@/components/PageHeader'
-import { MockQR } from '@/components/MockQR'
+import { PatientQR } from '@/components/PatientQR'
 import { useStore } from '@/store/useStore'
 import { ar } from '@/i18n/ar'
 import { formatAge, formatDate } from '@/lib/utils'
@@ -44,7 +44,7 @@ export function IdCardScreen() {
 
         <CardContent className="p-6 bg-card">
           <div className="flex items-center gap-5">
-            <MockQR value={patient.fileNoBasma} />
+            <PatientQR value={patient.fileNoBasma} />
             <div className="flex-1 min-w-0">
               <p className="text-xs text-muted-foreground">{ar.common.fileNo}</p>
               <p className="font-display text-3xl font-bold text-primary leading-none">{patient.fileNoBasma}</p>

@@ -89,6 +89,11 @@ export const ar = {
     ent: 'أذنية',
     surgery: 'جراحة',
     other: 'أخرى',
+    update: 'تحديث الاستشارة',
+    updated: 'تم تحديث الاستشارة بنجاح',
+    complete: 'إكمال استشارة',
+    reviewed: 'تمت المراجعة',
+    statusCoordinated: 'تم التنسيق',
   },
   // login
   login: {
@@ -97,10 +102,13 @@ export const ar = {
     username: 'اسم المستخدم',
     password: 'كلمة المرور',
     signIn: 'دخول',
-    pin: 'استخدم رمز PIN / البصمة',
     locked: 'تم قفل الحساب مؤقتاً بعد عدة محاولات فاشلة. حاول لاحقاً.',
     invalid: 'اسم المستخدم أو كلمة المرور غير صحيحة.',
-    hint: 'نسخة تجريبية: أدخل أي اسم مستخدم وأي كلمة مرور للدخول.',
+    connection: 'تعذّر الاتصال بالخادم. تحقّق من الاتصال أو إعداد عنوان الـ API.',
+    usernameRequired: 'يرجى إدخال اسم المستخدم.',
+    usernameInvalid: 'اسم المستخدم يحتوي على رموز غير صحيحة.',
+    passwordRequired: 'يرجى إدخال كلمة المرور.',
+    passwordShort: 'كلمة المرور يجب أن تكون 8 أحرف على الأقل.',
   },
   // dashboard
   dash: {
@@ -141,7 +149,9 @@ export const ar = {
     issueToken: 'إصدار رمز الانتظار',
     issued: 'تم إصدار الرمز بنجاح',
     notFound: 'لم يُعثر على هذا الرقم',
-    notFoundBody: 'قد يكون المريض غير مسجّل بعد.',
+    notFoundBody: 'رقم الإضبارة غير موجود في النظام.',
+    alreadyCheckedIn: 'المريض مسجّل وصوله اليوم — لا يمكن تسجيل وصول جديد.',
+    waitForServed: 'يجب إنهاء خدمة المريض المستدعى أولاً قبل استدعاء التالي.',
     registerNew: 'تسجيل مريض جديد',
     tokenIssuedToast: 'تم إصدار الرمز وإضافته إلى دور القسم',
     yourToken: 'رمز الانتظار',
@@ -172,8 +182,16 @@ export const ar = {
     sortName: 'الاسم',
     empty: 'لا يوجد مرضى مطابقون',
     registerNew: 'تسجيل مريض جديد',
+    registerConsult: 'تسجيل استشارة',
     schedule: 'جدولة موعد',
     printId: 'طباعة الهوية',
+  },
+  registerConsult: {
+    title: 'تسجيل استشارة',
+    type: 'نوع الاستشارة',
+    notes: 'ملاحظات',
+    saved: 'تم تسجيل طلب الاستشارة',
+    patientRequired: 'يرجى إدخال رقم إضبارة مريض صالح.',
   },
   // patient record
   record: {
@@ -214,6 +232,14 @@ export const ar = {
     duplicateNid: 'الرقم الوطني مستخدم مسبقاً',
     savedToast: 'تم تسجيل المريض — أصبح قابلاً للبحث وتسجيل الوصول',
     deathSectionNote: 'تظهر حقول الوفاة فقط عند اختيار «وفاة».',
+    nameRequired: 'يرجى إدخال الاسم.',
+    nameInvalid: 'الاسم يجب أن يحتوي على أحرف عربية أو إنجليزية ومسافات فقط (بدون أرقام أو رموز).',
+    phonePrefix: 'رقم الهاتف يجب أن يبدأ بـ 09.',
+    phoneLength: 'رقم الهاتف يجب أن يكون 10 أرقام على الأقل.',
+    phoneDigitsOnly: 'رقم الهاتف يجب أن يحتوي على أرقام فقط.',
+    dateInvalid: 'التاريخ غير صحيح.',
+    dobFuture: 'تاريخ الميلاد لا يمكن أن يكون في المستقبل.',
+    fixStepErrors: 'يرجى تصحيح الأخطاء في الحقول قبل المتابعة.',
   },
   // appointments
   appt: {
@@ -231,6 +257,9 @@ export const ar = {
     confirmed: 'تم تأكيد الموعد وإرسال الإشعارات',
     cancel: 'إلغاء الموعد',
     cancelled: 'تم إلغاء الموعد',
+    doctorNotFound: 'الطبيب غير موجود — تحقق من الاسم',
+    doctorVerified: 'الطبيب موجود',
+    verifyDoctor: 'تحقق من الطبيب',
     empty: 'لا توجد مواعيد',
   },
   // id card
@@ -261,8 +290,7 @@ export const ar = {
   profile: {
     title: 'حسابي',
     contact: 'معلومات التواصل',
-    security: 'إعدادات الدخول الآمن',
-    securityNote: 'تغيير كلمة المرور / رمز PIN (نموذج تجريبي).',
+    logoutError: 'تعذّر تسجيل الخروج من الخادم، تم إنهاء الجلسة محلياً.',
   },
 } as const
 

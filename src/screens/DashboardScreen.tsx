@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ScanLine,
@@ -19,28 +19,36 @@ import { Skeleton } from '@/components/ui/misc'
 import { DepartmentLane, deptIcon } from '@/components/DepartmentLane'
 import { NotificationRow } from '@/components/NotificationRow'
 import { useStore } from '@/store/useStore'
-import { useMockLoad } from '@/lib/useMockLoad'
-import { buildQueues, dashboardStats } from '@/lib/selectors'
+import { dashboardStats } from '@/lib/selectors'
 import { ar } from '@/i18n/ar'
-import { MOCK_TODAY, formatDate, cn } from '@/lib/utils'
+import { formatDate, cn, todayIsoDate } from '@/lib/utils'
 import type { Department } from '@/mock/types'
 
 const departments: Department[] = ['clinic', 'dayCare', 'inpatient']
 
 export function DashboardScreen() {
   const navigate = useNavigate()
-  const { state, reload } = useMockLoad(700)
   const staff = useStore((s) => s.staff)
-  const tokens = useStore((s) => s.tokens)
+  const queues = useStore((s) => s.queues)
+  const queuesLoading = useStore((s) => s.queuesLoading)
+  const queuesError = useStore((s) => s.queuesError)
+  const fetchQueues = useStore((s) => s.fetchQueues)
+  const fetchPatients = useStore((s) => s.fetchPatients)
   const patients = useStore((s) => s.patients)
-  const checkIns = useStore((s) => s.checkIns)
+  const tokens = useStore((s) => s.tokens)
   const appointments = useStore((s) => s.appointments)
+  const fetchAppointments = useStore((s) => s.fetchAppointments)
   const notifications = useStore((s) => s.notifications)
   const [activeTab, setActiveTab] = useState<Department>('clinic')
 
-  const queues = useMemo(() => buildQueues(tokens, patients, checkIns), [tokens, patients, checkIns])
+  useEffect(() => {
+    fetchQueues()
+    fetchPatients()
+    void fetchAppointments(todayIsoDate())
+  }, [fetchQueues, fetchPatients, fetchAppointments])
+
   const todaysAppointments = useMemo(
-    () => appointments.filter((a) => new Date(a.dateTime).toDateString() === MOCK_TODAY.toDateString() && a.status !== 'cancelled').length,
+    () => appointments.filter((a) => a.dateTime.startsWith(todayIsoDate()) && a.status !== 'cancelled').length,
     [appointments],
   )
   const stats = useMemo(() => dashboardStats(tokens, patients, todaysAppointments), [tokens, patients, todaysAppointments])
@@ -53,7 +61,7 @@ export function DashboardScreen() {
           <h1 className="text-2xl font-bold tracking-tight">
             {ar.dash.greeting} {staff?.firstName} 👋
           </h1>
-          <p className="text-sm text-muted-foreground">{formatDate(MOCK_TODAY.toISOString())}</p>
+          <p className="text-sm text-muted-foreground">{formatDate(new Date().toISOString())}</p>
         </div>
         <div className="flex items-center gap-2">
           <MiniStat label={ar.dash.arrived} value={stats.arrived} tone="primary" />
@@ -109,7 +117,7 @@ export function DashboardScreen() {
           </Button>
         </div>
 
-        {state === 'loading' ? (
+        {queuesLoading ? (
           <div className="grid lg:grid-cols-3 gap-4">
             {departments.map((d) => (
               <div key={d} className="rounded-2xl border p-3">
@@ -118,9 +126,9 @@ export function DashboardScreen() {
               </div>
             ))}
           </div>
-        ) : state === 'error' ? (
+        ) : queuesError ? (
           <Card>
-            <ErrorState onRetry={reload} />
+            <ErrorState onRetry={() => fetchQueues()} />
           </Card>
         ) : (
           <>

@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Search, UserPlus, IdCard, CalendarPlus, ChevronLeft } from 'lucide-react'
+import { Search, UserPlus, Stethoscope, IdCard, CalendarPlus, ChevronLeft, CheckCircle2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,41 +11,66 @@ import { PageHeader } from '@/components/PageHeader'
 import { ConsultIcons, ConsultLegend } from '@/components/ConsultIcons'
 import { TokenStatusBadge, PendingRegistrationBadge, LifeStatusBadge } from '@/components/StatusBadges'
 import { useStore } from '@/store/useStore'
-import { useMockLoad } from '@/lib/useMockLoad'
+import { useMasterData } from '@/lib/useMasterData'
+import { patientConsultNeeds, pendingConsultFileNos, consultRequestsForPatient } from '@/lib/consultRequests'
 import { ar } from '@/i18n/ar'
-import { consultTypes, departmentOptions, departmentLabel } from '@/i18n/enums'
+import { consultTypes } from '@/i18n/enums'
 import { formatAge, formatTime } from '@/lib/utils'
 import type { ConsultationType, Department } from '@/mock/types'
 
 export function PatientsScreen() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  const { state, reload } = useMockLoad(600)
   const patients = useStore((s) => s.patients)
   const tokens = useStore((s) => s.tokens)
   const checkIns = useStore((s) => s.checkIns)
+  const patientsLoading = useStore((s) => s.patientsLoading)
+  const patientsError = useStore((s) => s.patientsError)
+  const consultRequests = useStore((s) => s.consultRequests)
+  const consultRequestsLoading = useStore((s) => s.consultRequestsLoading)
+  const consultRequestsError = useStore((s) => s.consultRequestsError)
+  const fetchPatients = useStore((s) => s.fetchPatients)
+  const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
+  const coordinateConsultRequest = useStore((s) => s.coordinateConsultRequest)
+  const fetchQueues = useStore((s) => s.fetchQueues)
+  const { departmentOptions, getDepartmentLabel } = useMasterData()
+
+  useEffect(() => {
+    fetchPatients()
+    fetchQueues()
+    void fetchPendingConsultRequests()
+  }, [fetchPatients, fetchQueues, fetchPendingConsultRequests])
 
   const [q, setQ] = useState('')
   const [dept, setDept] = useState<Department | ''>('')
   const [consult, setConsult] = useState<ConsultationType | ''>(params.get('filter') === 'consult' ? '' : '')
-  const [onlyNew, setOnlyNew] = useState(params.get('filter') === 'new')
   const [onlyConsult, setOnlyConsult] = useState(params.get('filter') === 'consult')
   const [sort, setSort] = useState<'arrival' | 'name'>('arrival')
+  const [coordinatingId, setCoordinatingId] = useState<string | null>(null)
+
+  const handleCoordinate = async (id: string) => {
+    setCoordinatingId(id)
+    await coordinateConsultRequest(id)
+    setCoordinatingId(null)
+  }
+
+  useEffect(() => {
+    if (onlyConsult) void fetchPendingConsultRequests()
+  }, [onlyConsult, fetchPendingConsultRequests])
 
   const tokenByFile = useMemo(() => new Map(tokens.filter((t) => t.status !== 'served' && t.status !== 'cancelled').map((t) => [t.patientFileNo, t])), [tokens])
   const checkInByFile = useMemo(() => new Map(checkIns.map((c) => [c.patientFileNo, c])), [checkIns])
+
+  const pendingFiles = useMemo(() => pendingConsultFileNos(consultRequests), [consultRequests])
 
   const rows = useMemo(() => {
     const query = q.trim()
     let list = patients.filter((p) => {
       if (query && !(p.fileNoBasma.includes(query) || `${p.firstName} ${p.familyName} ${p.fatherName}`.includes(query) || p.nationalIdPatient.includes(query))) return false
-      if (onlyNew && !p.unregistered) return false
-      if (onlyConsult && p.consultationNeeds.length === 0) return false
-      if (consult && !p.consultationNeeds.includes(consult)) return false
-      if (dept) {
-        const tk = tokenByFile.get(p.fileNoBasma)
-        if (!tk || tk.department !== dept) return false
-      }
+      if (onlyConsult && !pendingFiles.has(p.fileNoBasma)) return false
+      const needs = patientConsultNeeds(p, consultRequests)
+      if (consult && !needs.includes(consult)) return false
+      if (dept && p.department !== dept) return false
       return true
     })
     list = [...list].sort((a, b) => {
@@ -55,17 +80,26 @@ export function PatientsScreen() {
       return cb.localeCompare(ca)
     })
     return list
-  }, [patients, q, dept, consult, onlyNew, onlyConsult, sort, tokenByFile, checkInByFile])
+  }, [patients, q, dept, consult, onlyConsult, sort, checkInByFile, consultRequests, pendingFiles])
+
+  const activeDeptLabel = dept ? getDepartmentLabel(dept) : null
 
   return (
     <div>
       <PageHeader
         title={ar.patients.title}
+        description={activeDeptLabel ? `${ar.common.department}: ${activeDeptLabel}` : undefined}
         action={
-          <Button onClick={() => navigate('/patients/new')}>
-            <UserPlus className="h-4 w-4" />
-            <span className="hidden sm:inline">{ar.patients.registerNew}</span>
-          </Button>
+          <div className="flex flex-wrap gap-2 justify-end">
+            <Button onClick={() => navigate('/patients/consult')}>
+              <Stethoscope className="h-4 w-4" />
+              <span className="hidden sm:inline">{ar.patients.registerConsult}</span>
+            </Button>
+            <Button onClick={() => navigate('/patients/new')}>
+              <UserPlus className="h-4 w-4" />
+              <span className="hidden sm:inline">{ar.patients.registerNew}</span>
+            </Button>
+          </div>
         }
       />
 
@@ -90,10 +124,17 @@ export function PatientsScreen() {
               <option value="name">{ar.patients.sortName}</option>
             </Select>
             <div className="flex gap-2">
-              <FilterChip active={onlyNew} onClick={() => setOnlyNew((v) => !v)} label={ar.dash.newToRegister} />
               <FilterChip active={onlyConsult} onClick={() => setOnlyConsult((v) => !v)} label={ar.consult.title} />
             </div>
           </div>
+          {activeDeptLabel && (
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary">{ar.common.department}: {activeDeptLabel}</Badge>
+              <button type="button" onClick={() => setDept('')} className="text-xs text-muted-foreground hover:text-foreground font-bold">
+                {ar.common.all}
+              </button>
+            </div>
+          )}
           <div className="pt-1">
             <p className="text-xs text-muted-foreground mb-1.5 font-bold">{ar.consult.legend}:</p>
             <ConsultLegend types={consultTypes} />
@@ -101,10 +142,15 @@ export function PatientsScreen() {
         </CardContent>
       </Card>
 
-      {state === 'loading' ? (
+      {patientsLoading || (onlyConsult && consultRequestsLoading) ? (
         <ListSkeleton rows={6} />
-      ) : state === 'error' ? (
-        <Card><ErrorState onRetry={reload} /></Card>
+      ) : patientsError || (onlyConsult && consultRequestsError) ? (
+        <Card>
+          <ErrorState onRetry={() => {
+            void fetchPatients()
+            if (onlyConsult) void fetchPendingConsultRequests()
+          }} />
+        </Card>
       ) : rows.length === 0 ? (
         <Card>
           <EmptyState
@@ -125,6 +171,7 @@ export function PatientsScreen() {
                   <Th>{ar.common.age}</Th>
                   <Th>{ar.common.department}</Th>
                   <Th>{ar.common.arrivalTime}</Th>
+                  <Th>{ar.patients.filterConsult}</Th>
                   <Th>{ar.common.status}</Th>
                   <Th>{ar.common.actions}</Th>
                 </tr>
@@ -133,24 +180,42 @@ export function PatientsScreen() {
                 {rows.map((p) => {
                   const tk = tokenByFile.get(p.fileNoBasma)
                   const ci = checkInByFile.get(p.fileNoBasma)
+                  const needs = patientConsultNeeds(p, consultRequests)
+                  const pendingRequests = consultRequestsForPatient(consultRequests, p.fileNoBasma)
                   return (
                     <tr key={p.fileNoBasma} className="hover:bg-muted/40 transition-colors">
                       <Td>{tk ? <Badge variant="default">{tk.number}</Badge> : <span className="text-muted-foreground">—</span>}</Td>
                       <Td><span className="font-bold text-primary">{p.fileNoBasma}</span></Td>
                       <Td>
-                        <div className="flex items-center gap-2">
-                          <button onClick={() => navigate(`/patients/${p.fileNoBasma}`)} className="font-bold hover:text-primary">{p.firstName} {p.familyName}</button>
-                          <ConsultIcons needs={p.consultationNeeds} patient={p} />
-                        </div>
+                        <button onClick={() => navigate(`/patients/${p.fileNoBasma}`)} className="font-bold hover:text-primary">{p.firstName} {p.familyName}</button>
                       </Td>
                       <Td>{formatAge(p.dob)}</Td>
-                      <Td>{tk ? departmentLabel[tk.department] : <span className="text-muted-foreground">—</span>}</Td>
+                      <Td>{p.department ? getDepartmentLabel(p.department) : <span className="text-muted-foreground">—</span>}</Td>
                       <Td>{ci ? formatTime(ci.arrivalTime) : <span className="text-muted-foreground">—</span>}</Td>
+                      <Td>
+                        {needs.length ? (
+                          <ConsultIcons needs={needs} patient={p} />
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </Td>
                       <Td>{p.unregistered ? <PendingRegistrationBadge /> : tk ? <TokenStatusBadge status={tk.status} emergency={tk.isEmergency} /> : <LifeStatusBadge status={p.lifeStatus} />}</Td>
                       <Td>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {pendingRequests.map((r) => (
+                            <Button
+                              key={r.id}
+                              size="sm"
+                              variant="outline"
+                              disabled={coordinatingId === r.id}
+                              onClick={() => void handleCoordinate(r.id)}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {ar.consult.complete}
+                            </Button>
+                          ))}
                           <Button size="icon" variant="ghost" onClick={() => navigate(`/patients/${p.fileNoBasma}/id-card`)} aria-label={ar.patients.printId}><IdCard className="h-4 w-4" /></Button>
-                          <Button size="icon" variant="ghost" onClick={() => navigate(`/appointments?fileNo=${p.fileNoBasma}`)} aria-label={ar.patients.schedule}><CalendarPlus className="h-4 w-4" /></Button>
+                          <Button size="icon" variant="ghost" onClick={() => navigate(`/appointments?patient_file_no=${encodeURIComponent(p.fileNoBasma)}`)} aria-label={ar.patients.schedule}><CalendarPlus className="h-4 w-4" /></Button>
                           <Button size="icon" variant="ghost" onClick={() => navigate(`/patients/${p.fileNoBasma}`)} aria-label={ar.common.open}><ChevronLeft className="h-4 w-4" /></Button>
                         </div>
                       </Td>
@@ -166,6 +231,8 @@ export function PatientsScreen() {
             {rows.map((p) => {
               const tk = tokenByFile.get(p.fileNoBasma)
               const ci = checkInByFile.get(p.fileNoBasma)
+              const needs = patientConsultNeeds(p, consultRequests)
+              const pendingRequests = consultRequestsForPatient(consultRequests, p.fileNoBasma)
               return (
                 <Card key={p.fileNoBasma}>
                   <CardContent className="p-4">
@@ -177,10 +244,14 @@ export function PatientsScreen() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <button onClick={() => navigate(`/patients/${p.fileNoBasma}`)} className="font-bold hover:text-primary">{p.firstName} {p.familyName}</button>
-                          <ConsultIcons needs={p.consultationNeeds} patient={p} />
                         </div>
+                        {needs.length > 0 && (
+                          <div className="mt-1.5">
+                            <ConsultIcons needs={needs} patient={p} />
+                          </div>
+                        )}
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatAge(p.dob)} · {tk ? departmentLabel[tk.department] : '—'}{ci && ` · ${formatTime(ci.arrivalTime)}`}
+                          {formatAge(p.dob)} · {p.department ? getDepartmentLabel(p.department) : '—'}{ci && ` · ${formatTime(ci.arrivalTime)}`}
                         </p>
                         <div className="mt-2 flex items-center gap-2 flex-wrap">
                           {tk && <Badge variant="default">{tk.number}</Badge>}
@@ -188,10 +259,29 @@ export function PatientsScreen() {
                         </div>
                       </div>
                     </div>
-                    <div className="mt-3 flex gap-1.5">
+                    <div className="mt-3 flex flex-col gap-2">
+                      {pendingRequests.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5">
+                          {pendingRequests.map((r) => (
+                            <Button
+                              key={r.id}
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              disabled={coordinatingId === r.id}
+                              onClick={() => void handleCoordinate(r.id)}
+                            >
+                              <CheckCircle2 className="h-4 w-4" />
+                              {ar.consult.complete}
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-1.5">
                       <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/patients/${p.fileNoBasma}/id-card`)}><IdCard className="h-4 w-4" />{ar.patients.printId}</Button>
-                      <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/appointments?fileNo=${p.fileNoBasma}`)}><CalendarPlus className="h-4 w-4" />{ar.patients.schedule}</Button>
+                      <Button size="sm" variant="outline" className="flex-1" onClick={() => navigate(`/appointments?patient_file_no=${encodeURIComponent(p.fileNoBasma)}`)}><CalendarPlus className="h-4 w-4" />{ar.patients.schedule}</Button>
                       <Button size="sm" variant="ghost" onClick={() => navigate(`/patients/${p.fileNoBasma}`)}><ChevronLeft className="h-4 w-4" /></Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>

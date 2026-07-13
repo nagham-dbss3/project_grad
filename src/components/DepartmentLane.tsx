@@ -4,7 +4,7 @@ import { EmptyState } from '@/components/ui/states'
 import { QueueRowCard } from './QueueRowCard'
 import { ar } from '@/i18n/ar'
 import type { Department } from '@/mock/types'
-import type { QueueRow } from '@/lib/selectors'
+import { departmentHasCalled } from '@/lib/selectors'
 
 export const deptIcon: Record<Department, LucideIcon> = {
   clinic: Stethoscope,
@@ -17,13 +17,16 @@ export function DepartmentLane({
   department,
   rows,
   showActions = true,
+  onCallToken,
 }: {
   department: Department
   rows: QueueRow[]
   showActions?: boolean
+  onCallToken?: (tokenId: string) => Promise<void>
 }) {
   const Icon = deptIcon[department]
   const waiting = rows.filter((r) => r.token.status === 'waiting').length
+  const callBlocked = departmentHasCalled(rows)
 
   return (
     <section className="flex flex-col rounded-2xl border bg-card/60 p-3 min-w-0">
@@ -41,7 +44,9 @@ export function DepartmentLane({
         {rows.length === 0 ? (
           <EmptyState title={ar.dash.laneEmpty} tone="success" className="py-8" />
         ) : (
-          rows.map((row) => <QueueRowCard key={row.token.id} row={row} showActions={showActions} />)
+          rows.map((row) => (
+            <QueueRowCard key={row.token.id} row={row} showActions={showActions} onCallToken={onCallToken} callBlocked={callBlocked} />
+          ))
         )}
       </div>
     </section>
