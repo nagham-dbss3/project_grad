@@ -20,6 +20,7 @@ import { CommandSearch } from '@/components/CommandSearch'
 import { useStore } from '@/store/useStore'
 import { ar } from '@/i18n/ar'
 import { useMasterData } from '@/lib/useMasterData'
+import { useFcm } from '@/hooks/useFcm'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -43,6 +44,7 @@ const bottomItems = navItems.filter((n) => n.to !== '/profile')
 export function AppShell() {
   const navigate = useNavigate()
   useMasterData()
+  useFcm()
   const [searchOpen, setSearchOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const staff = useStore((s) => s.staff)

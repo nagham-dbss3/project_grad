@@ -56,6 +56,8 @@ export interface ToastMessage {
   title: string
   description?: string
   variant: 'success' | 'error' | 'info' | 'warning'
+  /** Optional in-app path (e.g. from FCM `data.route`) — toast becomes clickable. */
+  route?: string
 }
 
 export type CheckInResult =

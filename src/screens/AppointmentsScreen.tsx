@@ -259,7 +259,7 @@ export function AppointmentsScreen() {
             {appointmentsLoading ? (
               <ListSkeleton rows={4} />
             ) : appointmentsError ? (
-              <ErrorState title={ar.appt.empty} action={<Button variant="outline" size="sm" onClick={() => void loadList()}>{ar.common.retry}</Button>} />
+              <ErrorState onRetry={() => void loadList()} />
             ) : sortedList.length ? (
               <div className="space-y-2">
                 {sortedList.map((a) => (

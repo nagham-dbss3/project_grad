@@ -9,7 +9,6 @@ import type {
   CheckInMethod,
   ConsultationType,
   Department,
-  Gender,
   LifeStatus,
   Nationality,
   ConsultRequest,
@@ -140,6 +139,14 @@ export function fetchMe(token: string): Promise<ApiUser> {
 
 export function logoutRequest(token: string): Promise<void> {
   return request<void>('/auth/logout', token, { method: 'POST' })
+}
+
+/** Register the device FCM token with the Backend (POST /fcm-tokens). */
+export function registerFcmTokenRequest(authToken: string, fcmToken: string): Promise<void> {
+  return request<void>('/fcm-tokens', authToken, {
+    method: 'POST',
+    body: JSON.stringify({ token: fcmToken, platform: 'web' }),
+  })
 }
 
 export interface PatientPayload {
@@ -343,10 +350,10 @@ export interface MasterDoctor {
 }
 
 /** Accepts either a bare array or a `{ data: [...] }` wrapper and always returns an array. */
-function toArray(res: unknown): unknown[] {
-  if (Array.isArray(res)) return res
+function toArray<T = unknown>(res: unknown): T[] {
+  if (Array.isArray(res)) return res as T[]
   if (res && typeof res === 'object' && Array.isArray((res as { data?: unknown }).data)) {
-    return (res as { data: unknown[] }).data
+    return (res as { data: T[] }).data
   }
   return []
 }

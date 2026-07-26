@@ -284,6 +284,7 @@ export const ar = {
     markRead: 'تعليم كمقروء',
     empty: 'لا توجد إشعارات',
     unread: 'غير مقروء',
+    pushTitle: 'إشعار جديد',
     type: { alert: 'تنبيه', info: 'معلومة', reminder: 'تذكير' },
   },
   // profile

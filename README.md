@@ -9,7 +9,7 @@ Reception is the single cross-department entry point: check-in, live queues, eme
 
 ## المتطلبات · Prerequisites
 
-| المتطلب | التفاصيل |
+| المتطلب | التفاصيل |ى
 |---|---|
 | **Node.js** | 18+ |
 | **خادم API** | `http://api.basma-unit.cloud:8080` |

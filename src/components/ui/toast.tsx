@@ -1,4 +1,5 @@
 import { CheckCircle2, AlertTriangle, Info, XCircle, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { cn } from '@/lib/utils'
 import type { ToastMessage } from '@/store/useStore'
@@ -16,12 +17,21 @@ const config: Record<
 export function Toaster() {
   const toasts = useStore((s) => s.toasts)
   const dismiss = useStore((s) => s.dismissToast)
+  const navigate = useNavigate()
 
   return (
     <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:end-4 sm:bottom-4 z-[60] flex flex-col gap-2 sm:w-96 no-print">
       {toasts.map((t) => {
         const c = config[t.variant]
         const Icon = c.icon
+        const clickable = Boolean(t.route)
+
+        const openRoute = () => {
+          if (!t.route) return
+          dismiss(t.id)
+          navigate(t.route)
+        }
+
         return (
           <div
             key={t.id}
@@ -29,7 +39,20 @@ export function Toaster() {
             className={cn(
               'flex items-start gap-3 rounded-xl border bg-card p-4 shadow-card animate-fade-in',
               c.ring,
+              clickable && 'cursor-pointer hover:bg-muted/40',
             )}
+            onClick={clickable ? openRoute : undefined}
+            onKeyDown={
+              clickable
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      openRoute()
+                    }
+                  }
+                : undefined
+            }
+            tabIndex={clickable ? 0 : undefined}
           >
             <Icon className={cn('h-5 w-5 mt-0.5 shrink-0', c.iconColor)} />
             <div className="flex-1 min-w-0">
@@ -37,7 +60,10 @@ export function Toaster() {
               {t.description && <p className="text-sm text-muted-foreground mt-0.5">{t.description}</p>}
             </div>
             <button
-              onClick={() => dismiss(t.id)}
+              onClick={(e) => {
+                e.stopPropagation()
+                dismiss(t.id)
+              }}
               aria-label="إغلاق"
               className="text-muted-foreground hover:text-foreground"
             >
