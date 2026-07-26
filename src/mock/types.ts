@@ -108,8 +108,9 @@ export interface Patient {
   familyName: string
   fatherName: string
   motherName: string
-  dob: string
-  gender: Gender
+  /** ISO date of birth — null when not provided by the API or form. */
+  dob: string | null
+  gender: Gender | null
   nationality: Nationality
   familyRegistry: GeoLocation
   residence: GeoLocation
@@ -136,8 +137,8 @@ export interface ConsultRequest {
   patientFileNo: string
   consultationType: ConsultationType
   status: string
-  notes?: string
-  requestedBy: string
+  notes: string | null
+  requestedBy: number
   createdAt: string
 }
 

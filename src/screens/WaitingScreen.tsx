@@ -7,11 +7,11 @@ import { PageHeader } from '@/components/PageHeader'
 import { ListSkeleton, ErrorState } from '@/components/ui/states'
 import { Card } from '@/components/ui/card'
 import { useStore } from '@/store/useStore'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import { cn } from '@/lib/utils'
 import type { Department } from '@/mock/types'
 
-const departments: Department[] = ['clinic', 'dayCare', 'inpatient']
 const icons: Record<Department, LucideIcon> = { clinic: Stethoscope, dayCare: Sun, inpatient: BedDouble }
 
 export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
@@ -20,6 +20,7 @@ export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
   const displayQueuesLoading = useStore((s) => s.displayQueuesLoading)
   const displayQueuesError = useStore((s) => s.displayQueuesError)
   const fetchDisplayQueues = useStore((s) => s.fetchDisplayQueues)
+  const { departmentKeys, getDepartmentLabel } = useMasterData()
 
   useEffect(() => {
     fetchDisplayQueues()
@@ -33,16 +34,16 @@ export function WaitingScreen({ fullscreen }: { fullscreen?: boolean }) {
     <Card><ErrorState onRetry={() => fetchDisplayQueues()} /></Card>
   ) : (
     <div className={cn('grid gap-4', fullscreen ? 'grid-cols-1 md:grid-cols-3' : 'grid-cols-1 md:grid-cols-3')}>
-      {departments.map((d) => {
+      {departmentKeys.map((d) => {
         const rows = displayQueues[d] ?? []
         const serving = rows.find((r) => r.token.status === 'called') ?? rows.find((r) => r.token.isEmergency)
         const next = rows.filter((r) => r.token.id !== serving?.token.id).slice(0, 4)
-        const Icon = icons[d]
+        const Icon = icons[d] ?? Stethoscope
         return (
           <section key={d} className="rounded-2xl border bg-card overflow-hidden">
             <header className="gradient-hope text-white p-4 flex items-center gap-2">
               <Icon className="h-6 w-6" />
-              <h2 className={cn('font-bold', fullscreen ? 'text-2xl' : 'text-lg')}>{ar.dept[d]}</h2>
+              <h2 className={cn('font-bold', fullscreen ? 'text-2xl' : 'text-lg')}>{getDepartmentLabel(d)}</h2>
             </header>
             <div className="p-4">
               <p className="text-xs text-muted-foreground mb-1">{ar.waiting.nowServing}</p>

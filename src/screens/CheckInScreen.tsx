@@ -330,9 +330,13 @@ export function CheckInScreen() {
                   </div>
 
                   <p className="text-sm text-muted-foreground">
-
-                    {formatAge(patient.dob)} · {patient.gender === 'male' ? ar.common.male : ar.common.female} · {patient.fatherName}
-
+                    {[
+                      formatAge(patient.dob),
+                      patient.gender === 'male' ? ar.common.male : patient.gender === 'female' ? ar.common.female : '',
+                      patient.fatherName,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
 
                 </div>

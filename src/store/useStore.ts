@@ -3,6 +3,7 @@ import type {
   Appointment,
   AppNotification,
   CheckIn,
+  ConsultationType,
   ConsultRequest,
   Department,
   Patient,
@@ -75,6 +76,8 @@ interface StoreState {
   departments: MasterDepartment[]
   doctors: MasterDoctor[]
   referralOptions: MasterReferralOption[]
+  masterDataLoading: boolean
+  masterDataError: boolean
   queues: Record<Department, QueueRow[]>
   displayQueues: Record<Department, QueueRow[]>
   queuesLoading: boolean
@@ -107,6 +110,7 @@ interface StoreState {
   fetchDepartments: () => Promise<void>
   fetchDoctors: (department?: Department) => Promise<void>
   fetchReferralOptions: () => Promise<void>
+  fetchMasterData: () => Promise<void>
   fetchQueues: () => Promise<void>
   fetchDisplayQueues: () => Promise<void>
 
@@ -207,6 +211,8 @@ export const useStore = create<StoreState>((set, get) => ({
   departments: [],
   doctors: [],
   referralOptions: [],
+  masterDataLoading: false,
+  masterDataError: false,
   queues: emptyQueues(),
   displayQueues: emptyQueues(),
   queuesLoading: false,
@@ -250,6 +256,8 @@ export const useStore = create<StoreState>((set, get) => ({
       departments: [],
       doctors: [],
       referralOptions: [],
+      masterDataLoading: false,
+      masterDataError: false,
       queues: emptyQueues(),
       displayQueues: emptyQueues(),
       queuesLoading: false,
@@ -335,7 +343,7 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       set({ departments: await fetchDepartmentsRequest(token) })
     } catch {
-      // Master data is non-blocking — keep whatever is already loaded.
+      set({ masterDataError: true })
     }
   },
 
@@ -345,7 +353,7 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       set({ doctors: await fetchDoctorsRequest(token, department) })
     } catch {
-      // Master data is non-blocking — keep whatever is already loaded.
+      // Doctors are optional — keep whatever is already loaded.
     }
   },
 
@@ -355,7 +363,36 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       set({ referralOptions: await fetchReferralOptionsRequest(token) })
     } catch {
-      // Master data is non-blocking — keep whatever is already loaded.
+      set({ masterDataError: true })
+    }
+  },
+
+  fetchMasterData: async () => {
+    const token = get().token
+    if (!token) return
+    set({ masterDataLoading: true, masterDataError: false })
+    const [deptRes, refRes] = await Promise.allSettled([
+      fetchDepartmentsRequest(token),
+      fetchReferralOptionsRequest(token),
+    ])
+    const patch: Partial<StoreState> = { masterDataLoading: false }
+    let anyOk = false
+    if (deptRes.status === 'fulfilled') {
+      patch.departments = deptRes.value
+      anyOk = true
+    }
+    if (refRes.status === 'fulfilled') {
+      patch.referralOptions = refRes.value
+      anyOk = true
+    }
+    patch.masterDataError = !anyOk
+    set(patch)
+    if (!anyOk) {
+      get().pushToast({
+        variant: 'error',
+        title: 'البيانات المرجعية',
+        description: 'تعذّر تحميل الأقسام وخيارات الإحالة.',
+      })
     }
   },
 
@@ -538,13 +575,38 @@ export const useStore = create<StoreState>((set, get) => ({
     set({ consultRequestsLoading: true, consultRequestsError: false })
     try {
       const res = await fetchPendingConsultRequestsRequest(authToken)
-      const consultRequests = res.data.map(apiToConsultRequest)
-      set({ consultRequests, consultRequestsLoading: false })
+      const consultRequests = (res.data ?? []).map(apiToConsultRequest)
+      set((s) => {
+        const byFile = new Map<string, ConsultationType[]>()
+        for (const req of consultRequests) {
+          const list = byFile.get(req.patientFileNo) ?? []
+          if (!list.includes(req.consultationType)) list.push(req.consultationType)
+          byFile.set(req.patientFileNo, list)
+        }
+        const mergeNeeds = (p: Patient): Patient => {
+          const extra = byFile.get(p.fileNoBasma)
+          if (!extra?.length) return p
+          return {
+            ...p,
+            consultationNeeds: [...new Set([...p.consultationNeeds, ...extra])],
+          }
+        }
+        return {
+          consultRequests,
+          consultRequestsLoading: false,
+          consultRequestsError: false,
+          patients: s.patients.map(mergeNeeds),
+          selectedPatient: s.selectedPatient ? mergeNeeds(s.selectedPatient) : null,
+        }
+      })
       return consultRequests
-    } catch {
+    } catch (err) {
+      // Keep previously loaded requests so icons do not disappear on a transient failure.
       set({ consultRequestsLoading: false, consultRequestsError: true })
-      get().pushToast({ variant: 'error', title: ar.consult.title, description: ar.common.retry })
-      return []
+      const description =
+        err instanceof ApiError && err.message !== 'network' ? err.message : ar.common.retry
+      get().pushToast({ variant: 'error', title: ar.consult.title, description })
+      return get().consultRequests
     }
   },
 

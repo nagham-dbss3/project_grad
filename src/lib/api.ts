@@ -155,8 +155,8 @@ export interface PatientPayload {
   full_name: string
   father_name: string
   mother_name: string
-  dob: string
-  gender: string
+  dob: string | null
+  gender: string | null
   nationality: string
   family_registry: string[]
   residence: string[]
@@ -236,6 +236,34 @@ const caregiverFromApi: Record<string, Caregiver> = {
   relative: 'uncleAunt',
 }
 
+const CONSULT_NEED_VALUES: ConsultationType[] = [
+  'cardiac',
+  'neurological',
+  'ophthalmic',
+  'ent',
+  'surgery',
+  'other',
+]
+
+function parseConsultationNeeds(raw: unknown): ConsultationType[] {
+  if (!Array.isArray(raw)) return []
+  const out: ConsultationType[] = []
+  for (const item of raw) {
+    const value =
+      typeof item === 'string'
+        ? item
+        : item && typeof item === 'object' && 'consultation_type' in item
+          ? String((item as { consultation_type: unknown }).consultation_type)
+          : item && typeof item === 'object' && 'type' in item
+            ? String((item as { type: unknown }).type)
+            : ''
+    if (CONSULT_NEED_VALUES.includes(value as ConsultationType)) {
+      out.push(value as ConsultationType)
+    }
+  }
+  return [...new Set(out)]
+}
+
 export function apiToPatient(api: ApiPatient): Patient {
   const [regGov = '', regCity = ''] = api.family_registry ?? []
   const [resGov = '', resCity = ''] = api.residence ?? []
@@ -251,8 +279,8 @@ export function apiToPatient(api: ApiPatient): Patient {
     familyName: api.family_name,
     fatherName: api.father_name || '',
     motherName: api.mother_name || '',
-    dob: api.dob || '2020-01-01',
-    gender: (api.gender || 'male') as Gender,
+    dob: api.dob?.trim() ? api.dob.trim() : null,
+    gender: api.gender === 'male' || api.gender === 'female' ? api.gender : null,
     nationality: (api.nationality || 'syrian') as Nationality,
     familyRegistry: { country: 'سورية', governorate: regGov, city: regCity },
     residence: { country: 'سورية', governorate: resGov, city: resCity },
@@ -263,7 +291,7 @@ export function apiToPatient(api: ApiPatient): Patient {
     generalTreatment: { lastVitalStatus: lifeStatusFromApi[api.life_status ?? ''] ?? 'alive' },
     followUp: {},
     lifeStatus: lifeStatusFromApi[api.life_status ?? ''] ?? 'alive',
-    consultationNeeds: (api.consultation_needs ?? []) as ConsultationType[],
+    consultationNeeds: parseConsultationNeeds(api.consultation_needs),
     registrationDate: api.registration_date || '',
     diagnosis: api.diagnosis || undefined,
     currentPhase: api.current_phase || undefined,
@@ -315,25 +343,74 @@ export interface MasterDoctor {
 }
 
 /** Accepts either a bare array or a `{ data: [...] }` wrapper and always returns an array. */
-function toArray<T>(res: unknown): T[] {
-  if (Array.isArray(res)) return res as T[]
+function toArray(res: unknown): unknown[] {
+  if (Array.isArray(res)) return res
   if (res && typeof res === 'object' && Array.isArray((res as { data?: unknown }).data)) {
-    return (res as { data: T[] }).data
+    return (res as { data: unknown[] }).data
   }
   return []
 }
 
+/** DepartmentModel.fromJson — keeps id, code, name, active. */
+export function departmentFromJson(raw: unknown): MasterDepartment | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const code = String(o.code ?? '').trim()
+  const name = String(o.name ?? '').trim()
+  if (!code && !name) return null
+  const activeRaw = o.active
+  const active =
+    activeRaw === false || activeRaw === 0 || activeRaw === '0' || activeRaw === 'false'
+      ? false
+      : true
+  return {
+    id: Number(o.id) || 0,
+    code: code || name,
+    name: name || code,
+    active,
+  }
+}
+
+/** ReferralOptionModel.fromJson — keeps id, name, active. */
+export function referralOptionFromJson(raw: unknown): MasterReferralOption | null {
+  if (!raw || typeof raw !== 'object') return null
+  const o = raw as Record<string, unknown>
+  const name = String(o.name ?? '').trim()
+  if (!name && o.id == null) return null
+  const activeRaw = o.active
+  const active =
+    activeRaw === false || activeRaw === 0 || activeRaw === '0' || activeRaw === 'false'
+      ? false
+      : true
+  return {
+    id: Number(o.id) || 0,
+    name: name || String(o.id),
+    active,
+  }
+}
+
 export async function fetchDepartmentsRequest(token: string): Promise<MasterDepartment[]> {
-  return toArray<MasterDepartment>(await request<unknown>('/master/departments', token, { method: 'GET' }))
+  const rows = toArray(await request<unknown>('/master/departments', token, { method: 'GET' }))
+  return rows.map(departmentFromJson).filter((d): d is MasterDepartment => d != null)
 }
 
 export async function fetchReferralOptionsRequest(token: string): Promise<MasterReferralOption[]> {
-  return toArray<MasterReferralOption>(await request<unknown>('/master/referral-options', token, { method: 'GET' }))
+  const rows = toArray(await request<unknown>('/master/referral-options', token, { method: 'GET' }))
+  return rows.map(referralOptionFromJson).filter((r): r is MasterReferralOption => r != null)
 }
 
 export async function fetchDoctorsRequest(token: string, department?: Department): Promise<MasterDoctor[]> {
   const query = department ? `?department=${encodeURIComponent(DEPT_TO_API[department])}` : ''
-  return toArray<MasterDoctor>(await request<unknown>(`/master/doctors${query}`, token, { method: 'GET' }))
+  const rows = toArray(await request<unknown>(`/master/doctors${query}`, token, { method: 'GET' }))
+  return rows
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .map((o) => ({
+      id: Number(o.id) || 0,
+      name: String(o.name ?? ''),
+      department: o.department != null ? String(o.department) : undefined,
+      active: o.active !== false,
+    }))
+    .filter((d) => d.name)
 }
 
 const DEPT_API: Record<Department, string> = DEPT_TO_API
@@ -852,15 +929,60 @@ const CONSULT_TYPE_VALUES: ConsultationType[] = [
   'other',
 ]
 
-function parseConsultType(raw: string): ConsultationType {
+function parseConsultType(raw: string | null | undefined): ConsultationType {
+  if (!raw) return 'other'
   return CONSULT_TYPE_VALUES.includes(raw as ConsultationType) ? (raw as ConsultationType) : 'other'
 }
 
+/** Normalize a single consult-request object from create/coordinate responses. */
 function parseConsultResponse(res: unknown): ApiConsultRequest {
-  if (res && typeof res === 'object' && 'data' in res) {
-    return (res as { data: ApiConsultRequest }).data
+  if (!res || typeof res !== 'object') {
+    throw new ApiError(0, 'invalid_consult_response')
   }
-  return res as ApiConsultRequest
+  const obj = res as Record<string, unknown>
+  // Create/coordinate may return the entity directly, or wrapped in `{ data: entity }`.
+  // List responses also have `data` as an array — never treat those as a single entity.
+  if ('data' in obj && obj.data && typeof obj.data === 'object' && !Array.isArray(obj.data)) {
+    return normalizeApiConsult(obj.data as Record<string, unknown>)
+  }
+  return normalizeApiConsult(obj)
+}
+
+function normalizeApiConsult(raw: Record<string, unknown>): ApiConsultRequest {
+  return {
+    id: Number(raw.id),
+    patient_file_no: String(raw.patient_file_no ?? ''),
+    consultation_type: String(raw.consultation_type ?? 'other'),
+    status: String(raw.status ?? 'pending'),
+    notes: raw.notes == null || raw.notes === '' ? null : String(raw.notes),
+    requested_by: Number(raw.requested_by ?? 0),
+    created_at: String(raw.created_at ?? ''),
+  }
+}
+
+/** Normalize list payload: always read rows from `response.data`. */
+export function parseConsultListResponse(res: unknown): ConsultRequestsListResponse {
+  if (Array.isArray(res)) {
+    return {
+      data: res.map((row) => normalizeApiConsult(row as Record<string, unknown>)),
+      page: 1,
+      perPage: res.length,
+      lastPage: 1,
+      total: res.length,
+    }
+  }
+  if (!res || typeof res !== 'object') {
+    return { data: [], page: 1, perPage: 15, lastPage: 1, total: 0 }
+  }
+  const obj = res as Record<string, unknown>
+  const rows = Array.isArray(obj.data) ? obj.data : []
+  return {
+    data: rows.map((row) => normalizeApiConsult(row as Record<string, unknown>)),
+    page: Number(obj.page) || 1,
+    perPage: Number(obj.perPage) || 15,
+    lastPage: Number(obj.lastPage) || 1,
+    total: Number(obj.total) || rows.length,
+  }
 }
 
 export function apiToConsultRequest(api: ApiConsultRequest): ConsultRequest {
@@ -869,14 +991,17 @@ export function apiToConsultRequest(api: ApiConsultRequest): ConsultRequest {
     patientFileNo: api.patient_file_no,
     consultationType: parseConsultType(api.consultation_type),
     status: api.status,
-    notes: api.notes ?? undefined,
-    requestedBy: String(api.requested_by),
+    notes: api.notes,
+    requestedBy: api.requested_by,
     createdAt: api.created_at,
   }
 }
 
-export function fetchPendingConsultRequests(token: string): Promise<ConsultRequestsListResponse> {
-  return request<ConsultRequestsListResponse>('/consult-requests?perPage=15&status=pending', token)
+export async function fetchPendingConsultRequests(token: string): Promise<ConsultRequestsListResponse> {
+  const res = await request<unknown>('/consult-requests?perPage=15&status=pending', token, {
+    method: 'GET',
+  })
+  return parseConsultListResponse(res)
 }
 
 export async function createConsultRequestRequest(

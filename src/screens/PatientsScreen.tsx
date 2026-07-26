@@ -142,14 +142,18 @@ export function PatientsScreen() {
         </CardContent>
       </Card>
 
-      {patientsLoading || (onlyConsult && consultRequestsLoading) ? (
+      {patientsLoading || (onlyConsult && consultRequestsLoading && patients.length === 0) ? (
         <ListSkeleton rows={6} />
-      ) : patientsError || (onlyConsult && consultRequestsError) ? (
+      ) : patientsError ? (
         <Card>
           <ErrorState onRetry={() => {
             void fetchPatients()
-            if (onlyConsult) void fetchPendingConsultRequests()
+            void fetchPendingConsultRequests()
           }} />
+        </Card>
+      ) : onlyConsult && consultRequestsError && pendingFiles.size === 0 ? (
+        <Card>
+          <ErrorState onRetry={() => void fetchPendingConsultRequests()} />
         </Card>
       ) : rows.length === 0 ? (
         <Card>
@@ -189,7 +193,7 @@ export function PatientsScreen() {
                       <Td>
                         <button onClick={() => navigate(`/patients/${p.fileNoBasma}`)} className="font-bold hover:text-primary">{p.firstName} {p.familyName}</button>
                       </Td>
-                      <Td>{formatAge(p.dob)}</Td>
+                      <Td>{formatAge(p.dob) || '—'}</Td>
                       <Td>{p.department ? getDepartmentLabel(p.department) : <span className="text-muted-foreground">—</span>}</Td>
                       <Td>{ci ? formatTime(ci.arrivalTime) : <span className="text-muted-foreground">—</span>}</Td>
                       <Td>
@@ -251,7 +255,9 @@ export function PatientsScreen() {
                           </div>
                         )}
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          {formatAge(p.dob)} · {p.department ? getDepartmentLabel(p.department) : '—'}{ci && ` · ${formatTime(ci.arrivalTime)}`}
+                          {[formatAge(p.dob), p.department ? getDepartmentLabel(p.department) : null, ci ? formatTime(ci.arrivalTime) : null]
+                            .filter(Boolean)
+                            .join(' · ') || '—'}
                         </p>
                         <div className="mt-2 flex items-center gap-2 flex-wrap">
                           {tk && <Badge variant="default">{tk.number}</Badge>}

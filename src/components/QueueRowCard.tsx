@@ -64,7 +64,9 @@ export function QueueRowCard({
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="font-bold text-foreground/80">{ar.common.fileNo}: {token.patientFileNo}</span>
-            {resolvedPatient && <span>{formatAge(resolvedPatient.dob)}</span>}
+            {resolvedPatient && formatAge(resolvedPatient.dob) ? (
+              <span>{formatAge(resolvedPatient.dob)}</span>
+            ) : null}
             {checkIn && <span>{ar.common.arrivalTime}: {formatTime(checkIn.arrivalTime)}</span>}
             <span>{ar.common.wait}: {checkIn ? formatWait(checkIn.arrivalTime) : '—'}</span>
           </div>

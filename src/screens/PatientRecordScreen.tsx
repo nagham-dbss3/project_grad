@@ -14,11 +14,11 @@ import { TokenStatusBadge } from '@/components/StatusBadges'
 import { AppointmentRow } from '@/components/AppointmentRow'
 import { useStore } from '@/store/useStore'
 import { patientTodayVisit, hasActiveCheckInToday } from '@/lib/patientVisit'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import {
   caregiverEducationOptions,
   caregiverOptions,
-  departmentLabel,
   lifeStatusLabel,
   nationalityOptions,
 } from '@/i18n/enums'
@@ -40,6 +40,7 @@ export function PatientRecordScreen() {
   const consultRequests = useStore((s) => s.consultRequests)
   const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
   const pushToast = useStore((s) => s.pushToast)
+  const { getDepartmentLabel, getReferralLabel } = useMasterData()
   const [tab, setTab] = useState('overview')
 
   useEffect(() => {
@@ -70,6 +71,8 @@ export function PatientRecordScreen() {
   const enumLabel = <T extends string>(arr: { value: T; label: string }[], present: unknown, mapped?: T) =>
     present ? arr.find((o) => o.value === mapped)?.label ?? '' : ''
   const listTxt = (v?: string[] | null) => (v && v.length ? v.filter(Boolean).join(' — ') : '')
+  const referralTxt = (v?: string[] | null) =>
+    v && v.length ? v.map((item) => getReferralLabel(item)).filter(Boolean).join(' — ') : ''
   const dateTxt = (v?: string | null) => (v ? formatDate(v) : '')
   const genderTxt = raw?.gender ? (raw.gender === 'male' ? ar.common.male : ar.common.female) : ''
 
@@ -132,7 +135,7 @@ export function PatientRecordScreen() {
                 {todayCheckIn ? (
                   <dl className="space-y-2 text-sm">
                     <Row label={ar.common.arrivalTime} value={formatTime(todayCheckIn.arrivalTime)} />
-                    <Row label={ar.common.department} value={departmentLabel[todayCheckIn.department]} />
+                    <Row label={ar.common.department} value={getDepartmentLabel(todayCheckIn.department)} />
                     <Row label="الرمز" value={todayToken ? todayToken.number : '—'} />
                     <Row label={ar.common.status} value={todayToken ? <TokenStatusBadge status={todayToken.status} emergency={todayToken.isEmergency} /> : '—'} />
                     <Row label={ar.checkin.visitReason} value={todayCheckIn.visitReason} />
@@ -160,7 +163,7 @@ export function PatientRecordScreen() {
                 <dl className="space-y-2 text-sm">
                   <Row label="التشخيص" value={raw?.diagnosis ?? ''} />
                   <Row label="المرحلة الحالية" value={raw?.current_phase ?? ''} />
-                  <Row label="القسم" value={raw?.department ? departmentLabel[patient.department ?? 'clinic'] : ''} />
+                  <Row label="القسم" value={raw?.department ? getDepartmentLabel(patient.department ?? raw.department) : ''} />
                   <Row
                     label="مؤشّرات حرجة"
                     value={raw?.critical_flags?.length ? (
@@ -244,7 +247,7 @@ export function PatientRecordScreen() {
               <h3 className="font-bold mb-3">الإحالة والعلاج والمتابعة</h3>
               <dl className="space-y-2 text-sm">
                 <Row label="الحالة الحيوية" value={raw?.life_status ? <Badge variant="secondary">{lifeStatusLabel[patient.lifeStatus]}</Badge> : ''} />
-                <Row label="الإحالة" value={listTxt(raw?.referral)} />
+                <Row label="الإحالة" value={referralTxt(raw?.referral)} />
                 <Row label="العلاج العام" value={listTxt(raw?.general_treatment)} />
                 <Row label="المتابعة" value={listTxt(raw?.follow_up)} />
               </dl>
@@ -278,7 +281,7 @@ export function PatientRecordScreen() {
                     <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="font-bold">{formatDate(c.arrivalTime)}</span>
                     <span className="text-muted-foreground">{formatTime(c.arrivalTime)}</span>
-                    <Badge variant="muted">{departmentLabel[c.department]}</Badge>
+                    <Badge variant="muted">{getDepartmentLabel(c.department)}</Badge>
                     {c.isEmergency && <Badge variant="warning">{ar.common.emergencyTag}</Badge>}
                     <span className="text-muted-foreground ms-auto truncate">{c.visitReason}</span>
                   </div>

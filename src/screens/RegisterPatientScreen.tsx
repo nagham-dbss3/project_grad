@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Stepper } from '@/components/Stepper'
 import { useStore } from '@/store/useStore'
 import { useMasterData } from '@/lib/useMasterData'
+import { normalizeReferralOptionValue } from '@/lib/masterData'
 import { ar } from '@/i18n/ar'
 import {
   caregiverEducationOptions,
@@ -174,7 +175,7 @@ function validateDraft(draft: Draft, isEdit: boolean, patients: { fileNoBasma: s
 
 const STEP_FIELDS: Partial<Record<number, (keyof Draft)[]>> = {
   0: ['electronicFileDate', 'basmaFileOpenDate', 'biruniFileOpenDate'],
-  1: ['firstName', 'familyName', 'fatherName', 'motherName', 'dob', 'phoneFather', 'phoneMother', 'nationalIdPatient'],
+  1: ['firstName', 'familyName', 'fatherName', 'motherName', 'phoneFather', 'phoneMother', 'nationalIdPatient'],
   2: ['referralDate'],
   4: ['deathDate'],
 }
@@ -278,8 +279,8 @@ function buildPayload(draft: Draft, showFollowUp: boolean): PatientPayload {
     full_name: fullName,
     father_name: draft.fatherName,
     mother_name: draft.motherName,
-    dob: draft.dob,
-    gender: draft.gender || 'male',
+    dob: draft.dob.trim() || null,
+    gender: draft.gender || null,
     nationality: draft.nationality || 'syrian',
     family_registry: [draft.residenceGov, draft.residenceCity].filter(Boolean),
     residence: [draft.residenceGov, draft.residenceCity].filter(Boolean),
@@ -309,7 +310,7 @@ export function RegisterPatientScreen() {
   const updatePatient = useStore((s) => s.updatePatient)
   const pushToast = useStore((s) => s.pushToast)
   const pushNotification = useStore((s) => s.pushNotification)
-  const { departmentCodeOptions, referralSelectOptions } = useMasterData()
+  const { departmentCodeOptions, referralSelectOptions, referralOptions, masterDataLoading, masterDataError, reloadMasterData } = useMasterData()
   const returnTo = params.get('return')
   const editFileNo = params.get('edit')
   const isEdit = Boolean(editFileNo)
@@ -323,6 +324,21 @@ export function RegisterPatientScreen() {
   const [loadingPatient, setLoadingPatient] = useState(isEdit)
   const [autosaved, setAutosaved] = useState(false)
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => setDraft((d) => ({ ...d, [key]: value }))
+
+  // Keep referral select value as option id when master data arrives (supports legacy name values).
+  useEffect(() => {
+    if (!draft.referralOption || referralOptions.length === 0) return
+    const normalized = normalizeReferralOptionValue(draft.referralOption, referralOptions)
+    if (normalized !== draft.referralOption) {
+      setDraft((d) => ({ ...d, referralOption: normalized }))
+    }
+  }, [referralOptions, draft.referralOption])
+
+  // Default department code from API list when creating a patient.
+  useEffect(() => {
+    if (isEdit || draft.department || departmentCodeOptions.length === 0) return
+    setDraft((d) => ({ ...d, department: departmentCodeOptions[0].value }))
+  }, [isEdit, draft.department, departmentCodeOptions])
 
   const isDeath = draft.lifeStatus === 'deceased'
   const showFollowUp = isDeath || draft.lifeStatus === 'lostToFollowUp' || draft.lifeStatus === 'treatmentStopped'
@@ -468,6 +484,13 @@ export function RegisterPatientScreen() {
               <Field label="الرقم الوطني للأب"><Input value={draft.nationalIdFather} onChange={(e) => set('nationalIdFather', e.target.value)} inputMode="numeric" /></Field>
               <SelectField label="الجنسية" value={draft.nationality} onChange={(v) => set('nationality', v as Nationality)} options={nationalityOptions} />
               <SelectField label={ar.common.department} value={draft.department} onChange={(v) => set('department', v)} options={departmentCodeOptions} />
+              {masterDataLoading && <p className="sm:col-span-2 text-xs text-muted-foreground">جارٍ تحميل الأقسام…</p>}
+              {masterDataError && departmentCodeOptions.length === 0 && (
+                <div className="sm:col-span-2 flex items-center gap-2 text-xs text-destructive">
+                  <span>تعذّر تحميل الأقسام.</span>
+                  <button type="button" className="font-bold underline" onClick={() => void reloadMasterData()}>{ar.common.retry}</button>
+                </div>
+              )}
               <Field label="المحافظة (الإقامة)"><Input value={draft.residenceGov} onChange={(e) => set('residenceGov', e.target.value)} /></Field>
               <Field label="المدينة (الإقامة)"><Input value={draft.residenceCity} onChange={(e) => set('residenceCity', e.target.value)} /></Field>
               <SelectField label="مقدم الرعاية" value={draft.caregiver} onChange={(v) => set('caregiver', v as Caregiver)} options={caregiverOptions} />
@@ -483,6 +506,15 @@ export function RegisterPatientScreen() {
               <Field label="تاريخ الإحالة" error={errors.referralDate}><Input type="date" value={draft.referralDate} onChange={(e) => set('referralDate', e.target.value)} /></Field>
               <SelectField label="بلد الإحالة" value={draft.referralCountry} onChange={(v) => set('referralCountry', v as ReferralCountry)} options={referralCountryOptions} />
               <SelectField label="المركز المحوِّل" value={draft.referralOption} onChange={(v) => set('referralOption', v)} options={referralSelectOptions} />
+              {masterDataLoading && referralSelectOptions.length === 0 && (
+                <p className="sm:col-span-2 text-xs text-muted-foreground">جارٍ تحميل خيارات الإحالة…</p>
+              )}
+              {!masterDataLoading && referralSelectOptions.length === 0 && (
+                <div className="sm:col-span-2 flex items-center gap-2 text-xs text-destructive">
+                  <span>تعذّر تحميل خيارات الإحالة من الخادم.</span>
+                  <button type="button" className="font-bold underline" onClick={() => void reloadMasterData()}>{ar.common.retry}</button>
+                </div>
+              )}
               <SelectField label="اختصاص الطبيب المحوِّل" value={draft.referringSpecialty} onChange={(v) => set('referringSpecialty', v as ReferringSpecialty)} options={referringSpecialtyOptions} />
               <SelectField label="نمط الإحالة" value={draft.referralPattern} onChange={(v) => set('referralPattern', v as ReferralPattern)} options={referralPatternOptions} />
             </div>

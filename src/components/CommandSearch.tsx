@@ -81,7 +81,7 @@ export function CommandSearch({ open, onOpenChange }: { open: boolean; onOpenCha
                   <ConsultIcons needs={p.consultationNeeds} patient={p} />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {formatAge(p.dob)} · {p.fatherName} · {p.residence.city}
+                  {[formatAge(p.dob), p.fatherName, p.residence.city].filter(Boolean).join(' · ')}
                 </p>
               </div>
               {p.unregistered && <PendingRegistrationBadge />}

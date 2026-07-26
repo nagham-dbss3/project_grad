@@ -38,6 +38,12 @@ export function AppointmentsScreen() {
   const [fileNo, setFileNo] = useState(patientFileFromUrl)
   const [department, setDepartment] = useState<Department>('clinic')
   const [doctorId, setDoctorId] = useState('')
+
+  useEffect(() => {
+    if (departmentOptions.length && !departmentOptions.some((d) => d.value === department)) {
+      setDepartment(departmentOptions[0].value)
+    }
+  }, [departmentOptions, department])
   const [date, setDate] = useState(todayIsoDate())
   const [listDate, setListDate] = useState(todayIsoDate())
   const [time, setTime] = useState('')

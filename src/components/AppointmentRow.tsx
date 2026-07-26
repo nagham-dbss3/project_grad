@@ -3,8 +3,8 @@ import { CalendarDays, Clock, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useStore } from '@/store/useStore'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
-import { departmentLabel } from '@/i18n/enums'
 import { formatDate, formatTime } from '@/lib/utils'
 import type { Appointment, AppointmentStatus } from '@/mock/types'
 
@@ -26,6 +26,7 @@ export function AppointmentRow({
 }) {
   const cancelAppointment = useStore((s) => s.cancelAppointment)
   const pushToast = useStore((s) => s.pushToast)
+  const { getDepartmentLabel } = useMasterData()
   const [cancelling, setCancelling] = useState(false)
 
   const doctor = appointment.doctorName
@@ -54,7 +55,7 @@ export function AppointmentRow({
           <Badge variant={meta.variant}>{meta.label}</Badge>
         </div>
         <p className="text-xs text-muted-foreground mt-0.5">
-          {patientLabel} · {departmentLabel[appointment.department]}{doctor && ` · ${doctor}`} · {appointment.type === 'followUp' ? ar.appt.followUp : ar.appt.initialExam}
+          {patientLabel} · {getDepartmentLabel(appointment.department)}{doctor && ` · ${doctor}`} · {appointment.type === 'followUp' ? ar.appt.followUp : ar.appt.initialExam}
         </p>
         {appointment.notes && <p className="text-xs text-muted-foreground mt-0.5">{appointment.notes}</p>}
       </div>

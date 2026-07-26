@@ -2,8 +2,10 @@ import { Stethoscope, Sun, BedDouble, type LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { EmptyState } from '@/components/ui/states'
 import { QueueRowCard } from './QueueRowCard'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import type { Department } from '@/mock/types'
+import type { QueueRow } from '@/lib/selectors'
 import { departmentHasCalled } from '@/lib/selectors'
 
 export const deptIcon: Record<Department, LucideIcon> = {
@@ -24,7 +26,8 @@ export function DepartmentLane({
   showActions?: boolean
   onCallToken?: (tokenId: string) => Promise<void>
 }) {
-  const Icon = deptIcon[department]
+  const { getDepartmentLabel } = useMasterData()
+  const Icon = deptIcon[department] ?? Stethoscope
   const waiting = rows.filter((r) => r.token.status === 'waiting').length
   const callBlocked = departmentHasCalled(rows)
 
@@ -35,7 +38,7 @@ export function DepartmentLane({
           <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-soft text-primary">
             <Icon className="h-5 w-5" />
           </span>
-          <h3 className="font-bold text-base">{ar.dept[department]}</h3>
+          <h3 className="font-bold text-base">{getDepartmentLabel(department)}</h3>
         </div>
         <Badge variant="muted">{waiting} بالانتظار</Badge>
       </header>

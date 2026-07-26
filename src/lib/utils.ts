@@ -14,12 +14,15 @@ export function computeAge(dob: string, today: Date = new Date()): number {
   return age
 }
 
-/** Format an age into Arabic-friendly label (سنة / أشهر for infants). */
-export function formatAge(dob: string): string {
+/** Format an age into Arabic-friendly label (سنة / أشهر for infants). Empty when dob is missing. */
+export function formatAge(dob: string | null | undefined): string {
+  if (!dob?.trim()) return ''
   const today = new Date()
   const years = computeAge(dob, today)
+  if (Number.isNaN(years)) return ''
   if (years >= 1) return `${years} سنة`
   const birth = new Date(dob)
+  if (Number.isNaN(birth.getTime())) return ''
   const months =
     (today.getFullYear() - birth.getFullYear()) * 12 +
     (today.getMonth() - birth.getMonth())
@@ -40,9 +43,11 @@ export function formatTime(iso: string): string {
   return d.toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
-/** Format an ISO date to a readable Arabic date. */
-export function formatDate(iso: string): string {
+/** Format an ISO date to a readable Arabic date. Empty when value is missing. */
+export function formatDate(iso: string | null | undefined): string {
+  if (!iso?.trim()) return ''
   const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
   return d.toLocaleDateString('ar-SY', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 

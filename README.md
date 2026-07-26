@@ -1,16 +1,19 @@
 # تطبيق الاستقبال — Basma Reception App
 
-تطبيق **مكتب الاستقبال (Front-Desk)** لمنصة أورام الأطفال الرقمية الخاصة بمنظمة بسمة. واجهة **عربية RTL** كاملة، **مستجيبة** (هاتف · لوحي · سطح مكتب)، مبنية بـ **React 18 + Vite + TypeScript + Zustand** ومتصلة بـ **REST API** خلفي.
+تطبيق **مكتب الاستقبال (Front-Desk)** لمنصة أورام الأطفال الرقمية الخاصة بمنظمة بسمة.  
+واجهة **عربية RTL** كاملة، **مستجيبة** (هاتف · لوحي · سطح مكتب)، مبنية بـ **React 18 + Vite + TypeScript + Zustand + Axios** ومتصلة بـ **REST API**.
 
-Reception is the single cross-department entry point for every patient: check-in, live queues by department, emergency intake, full Basma registration, appointments, consult coordination, digital ID, and a public waiting display.
+Reception is the single cross-department entry point: check-in, live queues, emergency intake, Basma registration, appointments, consult coordination, digital ID, and a public waiting display.
 
 ---
 
 ## المتطلبات · Prerequisites
 
-- **Node.js** 18+
-- **خادم API** يعمل (افتراضياً على `http://localhost:8080`)
-- في التطوير، يوجّه Vite الطلبات من `/api` إلى الخادم عبر **proxy** (انظر [`vite.config.ts`](vite.config.ts))
+| المتطلب | التفاصيل |
+|---|---|
+| **Node.js** | 18+ |
+| **خادم API** | `http://api.basma-unit.cloud:8080` |
+| **متصفح حديث** | Chrome / Edge / Firefox |
 
 ---
 
@@ -18,7 +21,7 @@ Reception is the single cross-department entry point for every patient: check-in
 
 ```bash
 npm install
-npm run dev      # ثم افتح http://localhost:5173
+npm run dev      # http://localhost:5173
 ```
 
 أوامر أخرى:
@@ -29,19 +32,35 @@ npm run typecheck  # tsc --noEmit
 npm run preview    # معاينة الإصدار المبني
 ```
 
-### إعداد عنوان الـ API
+> بعد تعديل `.env` أو `vite.config.ts` أعد تشغيل `npm run dev`.
 
-| المتغير | الافتراضي | الوصف |
+---
+
+## إعداد الـ API · Environment
+
+| المتغير | القيمة الافتراضية | الوصف |
 |---|---|---|
-| `VITE_API_BASE_URL` | `/api` | قاعدة مسار الـ API (نسبي مع proxy في التطوير، أو URL كامل في الإنتاج) |
+| `VITE_API_BASE_URL` | `/api` | قاعدة مسار الطلبات من الواجهة |
 
-مثال لملف `.env.local`:
+ملف [`.env`](.env):
 
 ```env
 VITE_API_BASE_URL=/api
 ```
 
-**تسجيل الدخول:** بريد إلكتروني أو اسم مستخدم + كلمة مرور عبر `POST /auth/login`. الجلسة تُحفظ في `localStorage` وتُستعاد تلقائياً عند إعادة التحميل ([`src/lib/authStorage.ts`](src/lib/authStorage.ts)).
+في التطوير:
+
+1. المتصفح يطلب `http://localhost:5173/api/...`
+2. Vite proxy يوجّه إلى `http://api.basma-unit.cloud:8080/api/...` (انظر [`vite.config.ts`](vite.config.ts))
+3. الهدف: تفادي مشاكل **CORS** عند الاتصال بالخادم مباشرة
+
+طبقة الطلبات: [`src/lib/api.ts`](src/lib/api.ts) عبر **Axios** (`apiClient`) مع:
+
+- `Authorization: Bearer <token>`
+- إرجاع `response.data`
+- رمي `ApiError` من `error.response.data` (يشمل أخطاء التحقق 422)
+
+**تسجيل الدخول:** `POST /auth/login` — الجلسة في `localStorage` عبر [`authStorage.ts`](src/lib/authStorage.ts) وتُستعاد عند التحميل (`hydrateAuthSession`).
 
 ---
 
@@ -50,140 +69,115 @@ VITE_API_BASE_URL=/api
 ```
 src/
   app/
-    App.tsx           المسارات والحماية (RequireAuth)
-    AppShell.tsx      الشريط العلوي · القائمة الجانبية/السفلية · البحث
-  screens/            شاشة لكل مسار (انظر الفهرس أدناه)
+    App.tsx              المسارات + RequireAuth
+    AppShell.tsx         الشريط العلوي · القائمة · البحث العام
+  screens/               شاشة لكل مسار
   components/
-    ui/               primitives (button, card, badge, input, select, tabs, toast, …)
-    ConsultIcons.tsx  أيقونات الاستشارات + الأسطورة
+    ui/                  button, card, badge, input, select, tabs, toast, states…
+    ConsultIcons.tsx     أيقونات الاستشارات + الأسطورة
     DepartmentLane.tsx · QueueRowCard.tsx · ScanPad.tsx · PatientQR.tsx
     AppointmentRow.tsx · PatientContextBar.tsx · PageHeader.tsx · …
   lib/
-    api.ts            طبقة REST — كل استدعاءات الخادم
-    authStorage.ts    حفظ/استعادة الجلسة
-    masterData.ts     تحويل الأقسام والإحالات من الـ API
-    useMasterData.ts  hook لقوائم الأقسام والإحالات
-    consultRequests.ts  دمج أيقونات الاستشارات والفلترة
-    patientVisit.ts   منطق زيارة اليوم
-    selectors.ts      بناء الطوابير والإحصائيات
-    utils.ts          تنسيق التاريخ/الوقت والمعرّفات
+    api.ts               Axios + كل endpoints + mappers (fromJson)
+    authStorage.ts       حفظ/استعادة الجلسة
+    masterData.ts        تحويل الأقسام والإحالات + خيارات القوائم
+    useMasterData.ts     hook: جلب master + تسميات العرض
+    consultRequests.ts   دمج أيقونات الاستشارات والفلترة
+    patientVisit.ts      زيارة اليوم / check-in نشط
+    selectors.ts         بناء الطوابير والإحصائيات
+    utils.ts             formatAge / formatDate / genId…
   mock/
-    types.ts          أنواع TypeScript للنطاق (Patient, Token, Appointment, …)
+    types.ts             أنواع النطاق فقط (بدون بيانات وهمية)
   store/
-    useStore.ts       Zustand — الحالة العامة والـ mutations
+    useStore.ts          Zustand — الحالة والـ mutations
   i18n/
-    ar.ts             نصوص الواجهة العربية
-    enums.ts          تسميات القوائم والخيارات
+    ar.ts                نصوص الواجهة
+    enums.ts             تسميات ثابتة للحقول غير المرجعية
   styles/
-    tokens.css        متغيّرات نظام التصميم
-  main.tsx            نقطة الدخول + hydrateAuthSession
+    tokens.css           متغيّرات نظام التصميم
+  main.tsx
 ```
 
-> **ملاحظة:** مجلد `mock/` يحتوي اليوم على **تعريفات الأنواع فقط** (`types.ts`). البيانات التشغيلية تأتي من الـ API وتُخزَّن في Zustand.
+> لا توجد بيانات mock تشغيلية. كل القوائم تأتي من الـ API أو Empty State.
 
 ---
 
-## طبقة الـ API · API layer
+## طبقة الـ API · Endpoints
 
-كل الطلبات تمر عبر [`src/lib/api.ts`](src/lib/api.ts) مع `Authorization: Bearer <token>`.
-
-| المجال | Endpoints رئيسية |
+| المجال | المسارات |
 |---|---|
 | **المصادقة** | `POST /auth/login` · `GET /auth/me` · `POST /auth/logout` |
 | **المرضى** | `GET /patients` · `GET /patients/{fileNo}` · `POST /patients` · `PATCH /patients/{fileNo}` |
 | **البيانات المرجعية** | `GET /master/departments` · `GET /master/referral-options` |
-| **الطوابير** | `GET /queues/{department}` · `PATCH /tokens/{id}/call` · `PATCH /tokens/{id}/status` |
-| **شاشة الانتظار** | `GET /display/queues` (عام — بدون توكن) |
-| **تسجيل الوصول** | `POST /check-ins` (عادي أو إسعافي) |
+| **الطوابير** | `GET /queues?department=` · `PATCH /tokens/{id}/call` · `PATCH /tokens/{id}/status` |
+| **شاشة الانتظار** | `GET /display/queues` (عام) |
+| **تسجيل الوصول** | `POST /check-ins` |
 | **المواعيد** | `GET /appointments` · `POST /appointments` · `PATCH /appointments/{id}/cancel` |
-| **الاستشارات** | `GET /consult-requests?status=pending` · `POST /consult-requests` · `PATCH /consult-requests/{id}/coordinate` |
+| **الاستشارات** | `GET /consult-requests?perPage=15&status=pending` · `POST /consult-requests` · `PATCH /consult-requests/{id}/coordinate` |
 
-الحالة المحلية (قوائم المرضى، الطوابير، المواعيد، طلبات الاستشارة، الإشعارات داخل التطبيق) تُدار في [`src/store/useStore.ts`](src/store/useStore.ts).
+### البيانات المرجعية (Master)
 
----
+- **الأقسام** — `id`, `code`, `name`, `active` → القوائم المنسدلة والعرض حسب `code` / الاسم من الـ API (`active: true` فقط).
+- **خيارات الإحالة** — `id`, `name`, `active` → قيمة الإرسال في الـ payload هي **`id`**.
 
-## فهرس الشاشات · Screen index
+تُجلب عبر `fetchMasterData()` في الـ store و`useMasterData()`.
 
-| المسار | الشاشة | الملف |
-|---|---|---|
-| `/login` | تسجيل الدخول | [LoginScreen](src/screens/LoginScreen.tsx) |
-| `/` | الرئيسية — الطوابير + إحصائيات + تسجيل وصول | [DashboardScreen](src/screens/DashboardScreen.tsx) |
-| `/check-in` | تسجيل وصول (مسح / يدوي) | [CheckInScreen](src/screens/CheckInScreen.tsx) |
-| `/emergency` | استقبال حالة إسعافية | [EmergencyScreen](src/screens/EmergencyScreen.tsx) |
-| `/patients` | المرضى — بحث · فلترة · استشارات | [PatientsScreen](src/screens/PatientsScreen.tsx) |
-| `/patients?filter=consult` | فلتر «استشارات مطلوبة» | PatientsScreen |
-| `/patients/new` | تسجيل مريض جديد | [RegisterPatientScreen](src/screens/RegisterPatientScreen.tsx) |
-| `/patients/consult` | تسجيل استشارة | [RegisterConsultScreen](src/screens/RegisterConsultScreen.tsx) |
-| `/patients/:fileNo` | سجلّ المريض | [PatientRecordScreen](src/screens/PatientRecordScreen.tsx) |
-| `/patients/:fileNo/id-card` | الهوية الرقمية + QR | [IdCardScreen](src/screens/IdCardScreen.tsx) |
-| `/queue` | إدارة الدور | [QueueScreen](src/screens/QueueScreen.tsx) |
-| `/appointments` | جدولة المواعيد | [AppointmentsScreen](src/screens/AppointmentsScreen.tsx) |
-| `/waiting-screen` | شاشة الانتظار (داخل التطبيق) | [WaitingScreen](src/screens/WaitingScreen.tsx) |
-| `/waiting-screen/display` | شاشة انتظار عامة (ملء الشاشة، بدون تسجيل دخول) | WaitingScreen |
-| `/notifications` | الإشعارات | [NotificationsScreen](src/screens/NotificationsScreen.tsx) |
-| `/profile` | حسابي | [ProfileScreen](src/screens/ProfileScreen.tsx) |
+### قواعد الحقول الفارغة
+
+- **تاريخ الميلاد / العمر:** إن كان فارغاً أو `null` يُحفظ ويُعرض فارغاً — بدون قيمة وهمية.
+- **الجنس:** إن لم يُحدَّد يبقى `null` / فارغاً في الـ payload والواجهة — بدون افتراض «ذكر».
 
 ---
 
-## تدفّقات رئيسية · Key flows
+## فهرس الشاشات · Screens
 
-### تسجيل الوصول والرموز
+| المسار | الشاشة |
+|---|---|
+| `/login` | تسجيل الدخول |
+| `/` | الرئيسية — إحصائيات + طوابير الأقسام |
+| `/check-in` | تسجيل وصول |
+| `/emergency` | حالة إسعافية |
+| `/patients` | قائمة المرضى (فلاتر + عمود استشارة) |
+| `/patients?filter=consult` | استشارات مطلوبة |
+| `/patients/new` | تسجيل مريض جديد |
+| `/patients/consult` | تسجيل استشارة |
+| `/patients/:fileNo` | سجل المريض |
+| `/patients/:fileNo/id-card` | الهوية الرقمية |
+| `/queue` | إدارة الدور |
+| `/appointments` | المواعيد |
+| `/waiting-screen` | معاينة شاشة الانتظار |
+| `/waiting-screen/display` | عرض عام ملء الشاشة (بدون تسجيل دخول) |
+| `/notifications` | الإشعارات |
+| `/profile` | حسابي |
 
-الشاشة: [`/check-in`](src/screens/CheckInScreen.tsx)
+الملفات تحت [`src/screens/`](src/screens/).
 
-1. **المسح أو الإدخال اليدوي** لرقم الإضبارة
-2. **تأكيد الهوية** — ملخص المريض
-3. **تحديد القسم** (من `GET /master/departments`) + سبب الزيارة
-4. **إصدار الرمز** — `POST /check-ins` → يظهر في طابور القسم وشاشة الانتظار
+---
 
-- مريض غير موجود → تفرّع إلى [`/patients/new`](src/screens/RegisterPatientScreen.tsx)
-- **الإسعاف** ([`/emergency`](src/screens/EmergencyScreen.tsx)): مسار أسرع مع `is_emergency=true` ورمز أولوية
+## تدفّقات رئيسية · Flows
 
-### المواعيد
+### تسجيل الوصول
+مسح/إدخال رقم الإضبارة → تأكيد → اختيار قسم (من master) → `POST /check-ins` → رمز في الطابور وشاشة الانتظار.
 
-[`/appointments`](src/screens/AppointmentsScreen.tsx) — جلب حسب التاريخ، إنشاء موعد (`doctor_id` رقمي)، إلغاء عبر `PATCH …/cancel`. يمكن التمرير من المرضى: `?patient_file_no=B0012`.
+### تسجيل مريض
+نموذج متعدد الخطوات → أقسام وإحالات من الـ API → `POST /patients`.
 
 ### الاستشارات
+- تسجيل: `/patients/consult` → `POST /consult-requests`
+- عرض الأيقونات في جدول المرضى + سجل المريض
+- فلتر معلّقة: `GET …/consult-requests?status=pending`
+- إكمال: `PATCH …/consult-requests/{id}/coordinate` → «تمت المراجعة»
 
-- **تسجيل:** [`/patients/consult`](src/screens/RegisterConsultScreen.tsx) → `POST /consult-requests`
-- **عرض:** عمود «الاستشارة» في جدول المرضى + قسم في سجل المريض
-- **فلتر معلّقة:** زر «استشارات مطلوبة» → `GET /consult-requests?status=pending`
-- **تنسيق/تحديث:** زر «تحديث الاستشارة» → `PATCH /consult-requests/{id}/coordinate`
+### رموز الاستشارات
 
-### دليل رموز الاستشارات
-
-معرّفة في [`src/components/ConsultIcons.tsx`](src/components/ConsultIcons.tsx):
-
-| الرمز | النوع | Icon |
-|---|---|---|
-| قلبية | `cardiac` | Heart |
-| عصبية | `neurological` | Brain |
-| عينية | `ophthalmic` | Eye |
-| أذنية | `ent` | Ear |
-| جراحة | `surgery` | Scissors |
-| أخرى | `other` | Stethoscope |
-
----
-
-## نظام التصميم · Design system
-
-- **الوضع الفاتح فقط.** الرموز (tokens) في [`src/styles/tokens.css`](src/styles/tokens.css) ومربوطة بـ Tailwind في [`tailwind.config.js`](tailwind.config.js).
-- **الخطوط:** Tajawal (عربي) · Nunito · Quicksand.
-- الدلالات: أزرق = أساسي · أخضر = نجاح · بنفسجي = استشارات · أصفر = احتفال · كهرماني = إسعافي/متأخر · أحمر = حرج.
-
-### RTL وإمكانية الوصول
-
-`dir="rtl"` و`lang="ar"` على `<html>`. الحالات لا تُميَّز باللون وحده — دائماً لون + أيقونة + نص. أهداف لمس ≥44px، تباين AA.
-
----
-
-## خارج النطاق · Non-goals
-
-- أدوار أخرى (طبيب / ممرض) — الاستقبال فقط
-- إدخال بيانات سريرية أو حذف سجلات
-- تطبيق ولي الأمر (النموذج جاهز للربط لاحقاً)
-- ماسح QR أو طابعة حقيقية (محاكاة واجهة)
-- وضع داكن
+| النوع | `consultation_type` |
+|---|---|
+| قلبية | `cardiac` |
+| عصبية | `neurological` |
+| عينية | `ophthalmic` |
+| أذنية | `ent` |
+| جراحة | `surgery` |
+| أخرى | `other` |
 
 ---
 
@@ -193,6 +187,26 @@ src/
 |---|---|
 | UI | React 18, React Router 6 |
 | Build | Vite 5, TypeScript 5 |
-| Styling | Tailwind CSS 3, CVA, clsx |
+| HTTP | Axios |
 | State | Zustand 5 |
+| Styling | Tailwind CSS 3, CVA, clsx |
 | Icons | Lucide React |
+
+---
+
+## نظام التصميم · Design
+
+- وضع فاتح فقط — [`src/styles/tokens.css`](src/styles/tokens.css)
+- خطوط: Tajawal · Nunito · Quicksand
+- `dir="rtl"` و`lang="ar"`
+- الحالات: لون + أيقونة + نص (ليس اللون وحده)
+
+---
+
+## خارج النطاق · Non-goals
+
+- أدوار طبيب/ممرض
+- إدخال سريري أو حذف سجلات
+- تطبيق ولي الأمر (النموذج جاهز للربط)
+- ماسح/طابعة حقيقية
+- وضع داكن

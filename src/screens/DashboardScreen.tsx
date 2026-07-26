@@ -20,11 +20,10 @@ import { DepartmentLane, deptIcon } from '@/components/DepartmentLane'
 import { NotificationRow } from '@/components/NotificationRow'
 import { useStore } from '@/store/useStore'
 import { dashboardStats } from '@/lib/selectors'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import { formatDate, cn, todayIsoDate } from '@/lib/utils'
 import type { Department } from '@/mock/types'
-
-const departments: Department[] = ['clinic', 'dayCare', 'inpatient']
 
 export function DashboardScreen() {
   const navigate = useNavigate()
@@ -39,7 +38,14 @@ export function DashboardScreen() {
   const appointments = useStore((s) => s.appointments)
   const fetchAppointments = useStore((s) => s.fetchAppointments)
   const notifications = useStore((s) => s.notifications)
-  const [activeTab, setActiveTab] = useState<Department>('clinic')
+  const { departmentKeys, getDepartmentLabel } = useMasterData()
+  const [activeTab, setActiveTab] = useState<Department>(departmentKeys[0] ?? 'clinic')
+
+  useEffect(() => {
+    if (departmentKeys.length && !departmentKeys.includes(activeTab)) {
+      setActiveTab(departmentKeys[0])
+    }
+  }, [departmentKeys, activeTab])
 
   useEffect(() => {
     fetchQueues()
@@ -119,7 +125,7 @@ export function DashboardScreen() {
 
         {queuesLoading ? (
           <div className="grid lg:grid-cols-3 gap-4">
-            {departments.map((d) => (
+            {departmentKeys.map((d) => (
               <div key={d} className="rounded-2xl border p-3">
                 <Skeleton className="h-8 w-32 mb-3" />
                 <ListSkeleton rows={2} />
@@ -134,28 +140,28 @@ export function DashboardScreen() {
           <>
             {/* Desktop / tablet: side-by-side lanes */}
             <div className="hidden md:grid md:grid-cols-3 gap-4">
-              {departments.map((d) => (
-                <DepartmentLane key={d} department={d} rows={queues[d]} />
+              {departmentKeys.map((d) => (
+                <DepartmentLane key={d} department={d} rows={queues[d] ?? []} />
               ))}
             </div>
             {/* Phone: tabbed lanes */}
             <div className="md:hidden">
               <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as Department)}>
                 <TabsList className="w-full">
-                  {departments.map((d) => {
+                  {departmentKeys.map((d) => {
                     const Icon = deptIcon[d]
                     return (
                       <TabsTrigger key={d} value={d}>
                         <Icon className="h-4 w-4" />
-                        {ar.dept[d]}
-                        <span className="text-xs">({queues[d].filter((r) => r.token.status === 'waiting').length})</span>
+                        {getDepartmentLabel(d)}
+                        <span className="text-xs">({(queues[d] ?? []).filter((r) => r.token.status === 'waiting').length})</span>
                       </TabsTrigger>
                     )
                   })}
                 </TabsList>
-                {departments.map((d) => (
+                {departmentKeys.map((d) => (
                   <TabsContent key={d} value={d} className="mt-3">
-                    <DepartmentLane department={d} rows={queues[d]} />
+                    <DepartmentLane department={d} rows={queues[d] ?? []} />
                   </TabsContent>
                 ))}
               </Tabs>

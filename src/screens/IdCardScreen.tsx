@@ -52,7 +52,7 @@ export function IdCardScreen() {
               <dl className="mt-2 space-y-1 text-sm">
                 <div className="flex gap-2"><dt className="text-muted-foreground">{ar.common.age}:</dt><dd className="font-bold">{formatAge(patient.dob)}</dd></div>
                 <div className="flex gap-2"><dt className="text-muted-foreground">تاريخ الميلاد:</dt><dd className="font-bold">{formatDate(patient.dob)}</dd></div>
-                <div className="flex gap-2"><dt className="text-muted-foreground">{ar.common.gender}:</dt><dd className="font-bold">{patient.gender === 'male' ? ar.common.male : ar.common.female}</dd></div>
+                <div className="flex gap-2"><dt className="text-muted-foreground">{ar.common.gender}:</dt><dd className="font-bold">{patient.gender === 'male' ? ar.common.male : patient.gender === 'female' ? ar.common.female : ''}</dd></div>
               </dl>
             </div>
           </div>

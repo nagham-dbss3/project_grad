@@ -66,8 +66,8 @@ export function EmergencyScreen() {
       familyName: rest.join(' ') || '—',
       fatherName: '',
       motherName: '',
-      dob: '2020-01-01',
-      gender: 'male',
+      dob: null,
+      gender: null,
       nationality: 'syrian',
       familyRegistry: { country: 'سورية', governorate: '', city: '' },
       residence: { country: 'سورية', governorate: '', city: '' },
@@ -195,7 +195,7 @@ export function EmergencyScreen() {
                     <ConsultIcons needs={patient.consultationNeeds} patient={patient} />
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {patient.dob !== '2020-01-01' ? formatAge(patient.dob) : 'العمر غير محدد'}
+                    {formatAge(patient.dob) || '—'}
                     {isQuickCreate && ` · ${ar.emergency.pendingFlag}`}
                   </p>
                 </div>

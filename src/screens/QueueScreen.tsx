@@ -5,10 +5,9 @@ import { Card } from '@/components/ui/card'
 import { PageHeader } from '@/components/PageHeader'
 import { DepartmentLane, deptIcon } from '@/components/DepartmentLane'
 import { useStore } from '@/store/useStore'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import type { Department } from '@/mock/types'
-
-const departments: Department[] = ['clinic', 'dayCare', 'inpatient']
 
 export function QueueScreen() {
   const queues = useStore((s) => s.queues)
@@ -19,7 +18,14 @@ export function QueueScreen() {
   const getPatient = useStore((s) => s.getPatient)
   const callToken = useStore((s) => s.callToken)
   const pushToast = useStore((s) => s.pushToast)
-  const [tab, setTab] = useState<Department>('clinic')
+  const { departmentKeys, getDepartmentLabel } = useMasterData()
+  const [tab, setTab] = useState<Department>(departmentKeys[0] ?? 'clinic')
+
+  useEffect(() => {
+    if (departmentKeys.length && !departmentKeys.includes(tab)) {
+      setTab(departmentKeys[0])
+    }
+  }, [departmentKeys, tab])
 
   const handleCallToken = useCallback(
     async (tokenId: string) => {
@@ -44,23 +50,23 @@ export function QueueScreen() {
       <PageHeader title={ar.nav.queue} description="استدعِ المرضى وحدّث حالاتهم — التحديثات تظهر على شاشة الانتظار." />
 
       {queuesLoading ? (
-        <div className="grid lg:grid-cols-3 gap-4">{departments.map((d) => <div key={d} className="rounded-2xl border p-3"><ListSkeleton rows={2} /></div>)}</div>
+        <div className="grid lg:grid-cols-3 gap-4">{departmentKeys.map((d) => <div key={d} className="rounded-2xl border p-3"><ListSkeleton rows={2} /></div>)}</div>
       ) : queuesError ? (
         <Card><ErrorState onRetry={() => fetchQueues()} /></Card>
       ) : (
         <>
           <div className="hidden md:grid md:grid-cols-3 gap-4">
-            {departments.map((d) => <DepartmentLane key={d} department={d} rows={queues[d]} onCallToken={handleCallToken} />)}
+            {departmentKeys.map((d) => <DepartmentLane key={d} department={d} rows={queues[d] ?? []} onCallToken={handleCallToken} />)}
           </div>
           <div className="md:hidden">
             <Tabs value={tab} onValueChange={(v) => setTab(v as Department)}>
               <TabsList className="w-full">
-                {departments.map((d) => {
+                {departmentKeys.map((d) => {
                   const Icon = deptIcon[d]
-                  return <TabsTrigger key={d} value={d}><Icon className="h-4 w-4" />{ar.dept[d]}</TabsTrigger>
+                  return <TabsTrigger key={d} value={d}><Icon className="h-4 w-4" />{getDepartmentLabel(d)}</TabsTrigger>
                 })}
               </TabsList>
-              {departments.map((d) => <TabsContent key={d} value={d} className="mt-3"><DepartmentLane department={d} rows={queues[d]} onCallToken={handleCallToken} /></TabsContent>)}
+              {departmentKeys.map((d) => <TabsContent key={d} value={d} className="mt-3"><DepartmentLane department={d} rows={queues[d] ?? []} onCallToken={handleCallToken} /></TabsContent>)}
             </Tabs>
           </div>
         </>

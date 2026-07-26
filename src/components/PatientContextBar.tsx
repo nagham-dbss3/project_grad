@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button'
 import { ConsultIcons } from './ConsultIcons'
 import { LifeStatusBadge } from './StatusBadges'
 import { useStore } from '@/store/useStore'
+import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
-import { departmentLabel } from '@/i18n/enums'
 import { formatAge, formatDate } from '@/lib/utils'
 import type { Patient } from '@/mock/types'
 
@@ -13,6 +13,7 @@ import type { Patient } from '@/mock/types'
 export function PatientContextBar({ patient }: { patient: Patient }) {
   const tokens = useStore((s) => s.tokens)
   const pushToast = useStore((s) => s.pushToast)
+  const { getDepartmentLabel } = useMasterData()
   const todayToken = tokens.find(
     (t) => t.patientFileNo === patient.fileNoBasma && t.status !== 'served' && t.status !== 'cancelled',
   )
@@ -32,15 +33,21 @@ export function PatientContextBar({ patient }: { patient: Patient }) {
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
             <span className="font-bold text-primary">{ar.common.fileNo}: {patient.fileNoBasma}</span>
             <span>البيروني: {patient.fileNoBiruni}</span>
-            <span>{formatDate(patient.dob)} · {formatAge(patient.dob)}</span>
-            <span>{patient.gender === 'male' ? ar.common.male : ar.common.female}</span>
+            {[formatDate(patient.dob), formatAge(patient.dob)].filter(Boolean).map((txt, i) => (
+              <span key={i}>{txt}</span>
+            ))}
+            {patient.gender === 'male' ? (
+              <span>{ar.common.male}</span>
+            ) : patient.gender === 'female' ? (
+              <span>{ar.common.female}</span>
+            ) : null}
           </div>
         </div>
 
         <div className="flex items-center gap-2 ms-auto">
           {todayToken && (
             <Badge variant="default">
-              {departmentLabel[todayToken.department]} · {todayToken.number}
+              {getDepartmentLabel(todayToken.department)} · {todayToken.number}
             </Badge>
           )}
           {phone && (
