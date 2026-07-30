@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { ScanLine, Loader2, Search } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ScanLine, Loader2, Search, Camera, Keyboard } from 'lucide-react'
+import { Html5Qrcode } from 'html5-qrcode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/misc'
@@ -8,7 +9,13 @@ import { fetchPatientRequest, ApiError } from '@/lib/api'
 import { ar } from '@/i18n/ar'
 import { cn } from '@/lib/utils'
 
-/** Scanner pad — manual file-number lookup via API; scan opens manual entry. */
+const CAMERA_REGION_ID = 'scan-pad-camera-region'
+const SCANNER_CHAR_GAP_MS = 80
+const SCANNER_MIN_LENGTH = 3
+
+type Mode = 'idle' | 'manual' | 'camera'
+
+/** Scanner pad — USB/Bluetooth keyboard wedge, webcam QR, and manual file lookup. */
 export function ScanPad({
   onResolved,
   onUnknown,
@@ -20,11 +27,17 @@ export function ScanPad({
 }) {
   const patients = useStore((s) => s.patients)
   const token = useStore((s) => s.token)
-  const [manual, setManual] = useState(startManual)
+  const pushToast = useStore((s) => s.pushToast)
+  const [mode, setMode] = useState<Mode>(startManual ? 'manual' : 'idle')
   const [value, setValue] = useState('')
   const [lookingUp, setLookingUp] = useState(false)
+  const lookingUpRef = useRef(false)
+  const bufferRef = useRef('')
+  const lastKeyAtRef = useRef(0)
+  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
 
-  const lookupFile = async (fileNo: string): Promise<boolean> => {
+  const lookupFile = useCallback(async (fileNo: string): Promise<boolean> => {
     if (patients.some((p) => p.fileNoBasma === fileNo)) return true
     if (!token) return false
     try {
@@ -34,12 +47,14 @@ export function ScanPad({
       if (err instanceof ApiError && err.status === 404) return false
       return false
     }
-  }
+  }, [patients, token])
 
-  const resolveManual = async (method: 'scan' | 'manual') => {
-    const fileNo = value.trim()
-    if (!fileNo || lookingUp) return
+  const resolveFile = useCallback(async (raw: string, method: 'scan' | 'manual') => {
+    const fileNo = raw.trim()
+    if (!fileNo || lookingUpRef.current) return
+    lookingUpRef.current = true
     setLookingUp(true)
+    setValue(fileNo)
     try {
       const local = patients.find((p) => p.fileNoBasma === fileNo)
       if (local) {
@@ -50,51 +65,176 @@ export function ScanPad({
       if (ok) onResolved(fileNo, method)
       else onUnknown(fileNo)
     } finally {
+      lookingUpRef.current = false
       setLookingUp(false)
     }
-  }
+  }, [lookupFile, onResolved, onUnknown, patients])
+
+  // USB / Bluetooth scanner (keyboard emulation)
+  useEffect(() => {
+    if (mode === 'camera') return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName?.toLowerCase()
+      const isTypingField =
+        tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable
+
+      if (isTypingField && mode === 'manual') return
+
+      const now = Date.now()
+      if (now - lastKeyAtRef.current > SCANNER_CHAR_GAP_MS) bufferRef.current = ''
+      lastKeyAtRef.current = now
+
+      if (e.key === 'Enter') {
+        const scanned = bufferRef.current.trim()
+        bufferRef.current = ''
+        if (scanned.length >= SCANNER_MIN_LENGTH) {
+          e.preventDefault()
+          void resolveFile(scanned, 'scan')
+        }
+        return
+      }
+
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey && !isTypingField) {
+        bufferRef.current += e.key
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [mode, resolveFile])
+
+  // Webcam QR via html5-qrcode
+  useEffect(() => {
+    if (mode !== 'camera') return
+
+    let cancelled = false
+    const scanner = new Html5Qrcode(CAMERA_REGION_ID)
+    scannerRef.current = scanner
+
+    const start = async () => {
+      try {
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 220, height: 220 } },
+          (decoded) => {
+            if (cancelled || !decoded.trim()) return
+            void (async () => {
+              try {
+                await scanner.stop()
+              } catch {
+                /* already stopped */
+              }
+              if (!cancelled) {
+                setMode('manual')
+                void resolveFile(decoded.trim(), 'scan')
+              }
+            })()
+          },
+          () => undefined,
+        )
+      } catch {
+        if (!cancelled) {
+          pushToast({
+            variant: 'warning',
+            title: ar.checkin.title,
+            description: ar.checkin.cameraUnavailable,
+          })
+          setMode('manual')
+        }
+      }
+    }
+
+    void start()
+
+    return () => {
+      cancelled = true
+      const active = scannerRef.current
+      scannerRef.current = null
+      if (active?.isScanning) {
+        void active.stop().catch(() => undefined)
+      }
+    }
+  }, [mode, pushToast, resolveFile])
 
   return (
     <div className="space-y-4">
-      {!manual ? (
-        <div className="flex flex-col items-center text-center">
-          <button
-            type="button"
-            onClick={() => setManual(true)}
-            className={cn(
-              'relative flex h-40 w-40 items-center justify-center rounded-2xl border-2 border-dashed border-primary/40 bg-primary-soft/50 transition-colors hover:bg-primary-soft',
-            )}
-            aria-label={ar.checkin.scanBtn}
-          >
-            <ScanLine className="h-16 w-16 text-primary" />
-          </button>
-          <p className="text-sm text-muted-foreground mt-3 max-w-xs">{ar.checkin.scanPrompt}</p>
-          <Button variant="link" className="mt-2" onClick={() => setManual(true)}>
-            {ar.checkin.manualLabel}
-          </Button>
-        </div>
-      ) : (
-        <Field label={ar.common.fileNo}>
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && void resolveManual('manual')}
-                placeholder={ar.common.searchByFile}
-                className="ps-9"
-                autoFocus
-              />
-            </div>
-            <Button disabled={!value.trim() || lookingUp} onClick={() => void resolveManual('manual')}>
-              {lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : ar.checkin.resolve}
+      {mode === 'camera' ? (
+        <div className="space-y-3">
+          <div
+            id={CAMERA_REGION_ID}
+            className="overflow-hidden rounded-xl border bg-black/5 min-h-[260px]"
+          />
+          <div className="flex flex-wrap gap-2 justify-center">
+            <Button variant="outline" onClick={() => setMode('idle')}>
+              {ar.checkin.closeCamera}
+            </Button>
+            <Button variant="ghost" onClick={() => setMode('manual')}>
+              <Keyboard className="h-4 w-4" />
+              إدخال يدوي
             </Button>
           </div>
-          <Button variant="ghost" size="sm" className="mt-2" onClick={() => setManual(false)}>
-            {ar.common.back}
-          </Button>
-        </Field>
+        </div>
+      ) : (
+        <>
+          {/* Scan target + camera CTA — always visible */}
+          <div className="flex flex-col items-center text-center">
+            <div
+              className={cn(
+                'relative flex h-40 w-40 items-center justify-center rounded-2xl border-2 border-dashed border-primary/40 bg-primary-soft/50',
+              )}
+              aria-label={ar.checkin.scanBtn}
+            >
+              <ScanLine className="h-16 w-16 text-primary" />
+            </div>
+            <p className="text-sm text-muted-foreground mt-3 max-w-xs">
+              وجّه رمز هوية المريض إلى الماسح أو افتح الكاميرا
+            </p>
+
+            {/* Explicit camera button under the scan box */}
+            <Button
+              type="button"
+              size="lg"
+              className="mt-4 w-full max-w-sm"
+              onClick={() => setMode('camera')}
+            >
+              <Camera className="h-5 w-5" />
+              فتح الكاميرا للمسح
+            </Button>
+
+            <Button
+              type="button"
+              variant="link"
+              className="mt-1"
+              onClick={() => setMode('manual')}
+            >
+              أو أدخل رقم الإضبارة يدوياً
+            </Button>
+          </div>
+
+          {mode === 'manual' && (
+            <Field label={ar.common.fileNo}>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    ref={inputRef}
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && void resolveFile(value, 'manual')}
+                    placeholder={ar.common.searchByFile}
+                    className="ps-9"
+                    autoFocus
+                  />
+                </div>
+                <Button disabled={!value.trim() || lookingUp} onClick={() => void resolveFile(value, 'manual')}>
+                  {lookingUp ? <Loader2 className="h-4 w-4 animate-spin" /> : ar.checkin.resolve}
+                </Button>
+              </div>
+            </Field>
+          )}
+        </>
       )}
     </div>
   )

@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/misc'
 import { DepartmentLane, deptIcon } from '@/components/DepartmentLane'
 import { NotificationRow } from '@/components/NotificationRow'
 import { useStore } from '@/store/useStore'
-import { dashboardStats } from '@/lib/selectors'
+import { dashboardStats, countConsultsNeedingCoordination } from '@/lib/selectors'
 import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
 import { formatDate, cn, todayIsoDate } from '@/lib/utils'
@@ -37,6 +37,8 @@ export function DashboardScreen() {
   const tokens = useStore((s) => s.tokens)
   const appointments = useStore((s) => s.appointments)
   const fetchAppointments = useStore((s) => s.fetchAppointments)
+  const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
+  const consultRequests = useStore((s) => s.consultRequests)
   const notifications = useStore((s) => s.notifications)
   const { departmentKeys, getDepartmentLabel } = useMasterData()
   const [activeTab, setActiveTab] = useState<Department>(departmentKeys[0] ?? 'clinic')
@@ -51,13 +53,22 @@ export function DashboardScreen() {
     fetchQueues()
     fetchPatients()
     void fetchAppointments(todayIsoDate())
-  }, [fetchQueues, fetchPatients, fetchAppointments])
+    void fetchPendingConsultRequests()
+  }, [fetchQueues, fetchPatients, fetchAppointments, fetchPendingConsultRequests])
 
   const todaysAppointments = useMemo(
     () => appointments.filter((a) => a.dateTime.startsWith(todayIsoDate()) && a.status !== 'cancelled').length,
     [appointments],
   )
-  const stats = useMemo(() => dashboardStats(tokens, patients, todaysAppointments), [tokens, patients, todaysAppointments])
+  /** Pending consults needing coordination — API pending + queue consult needs. */
+  const pendingConsultCount = useMemo(
+    () => countConsultsNeedingCoordination(consultRequests),
+    [consultRequests],
+  )
+  const stats = useMemo(
+    () => dashboardStats(tokens, patients, todaysAppointments, pendingConsultCount),
+    [tokens, patients, todaysAppointments, pendingConsultCount],
+  )
 
   return (
     <div className="space-y-5">
@@ -110,7 +121,13 @@ export function DashboardScreen() {
         <ActionCard icon={UserPlus} label={ar.dash.newToRegister} value={stats.newToRegister} tone="accent" onClick={() => navigate('/patients?filter=new')} />
         <ActionCard icon={CalendarDays} label={ar.dash.todaysAppointments} value={stats.todaysAppointments} tone="primary" onClick={() => navigate('/appointments')} />
         <ActionCard icon={Siren} label={ar.dash.activeEmergencies} value={stats.activeEmergencies} tone="emergency" onClick={() => navigate('/queue')} />
-        <ActionCard icon={Stethoscope} label={ar.consult.needsCoordination} value={stats.consultsToCoordinate} tone="consult" onClick={() => navigate('/patients?filter=consult')} />
+        <ActionCard
+          icon={Stethoscope}
+          label={ar.consult.needsCoordination}
+          value={pendingConsultCount}
+          tone="consult"
+          onClick={() => navigate('/patients?filter=consult')}
+        />
       </div>
 
       {/* 4. Queues split by department */}

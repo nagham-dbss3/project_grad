@@ -123,6 +123,8 @@ export interface Patient {
   lifeStatus: LifeStatus
   consultationNeeds: ConsultationType[]
   registrationDate: string
+  /** API registration_status: e.g. partial | complete. */
+  registrationStatus?: string
   /** True for patients who arrived but are not yet fully registered (scan → register branch). */
   unregistered?: boolean
   /** Clinical fields from the real API (optional — not collected in the reception form). */

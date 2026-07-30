@@ -9,6 +9,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { ScanPad } from '@/components/ScanPad'
 import { ConsultIcons } from '@/components/ConsultIcons'
 import { useStore } from '@/store/useStore'
+import { patientConsultNeeds } from '@/lib/consultRequests'
 import { ar } from '@/i18n/ar'
 import { useMasterData } from '@/lib/useMasterData'
 import { formatAge } from '@/lib/utils'
@@ -22,6 +23,7 @@ export function EmergencyScreen() {
   const issueToken = useStore((s) => s.issueToken)
   const pushToast = useStore((s) => s.pushToast)
   const pushNotification = useStore((s) => s.pushNotification)
+  const consultRequests = useStore((s) => s.consultRequests)
   const { departmentOptions, getDepartmentLabel } = useMasterData()
 
   const [step, setStep] = useState<Step>('identify')
@@ -192,7 +194,7 @@ export function EmergencyScreen() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <p className="font-bold text-lg">{patient.firstName} {patient.familyName}</p>
-                    <ConsultIcons needs={patient.consultationNeeds} patient={patient} />
+                    <ConsultIcons needs={patientConsultNeeds(patient, consultRequests)} patient={patient} />
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {formatAge(patient.dob) || '—'}

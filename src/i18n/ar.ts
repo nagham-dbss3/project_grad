@@ -134,9 +134,13 @@ export const ar = {
     step2: 'تأكيد الهوية',
     step3: 'تحديد القسم',
     step4: 'إصدار الرمز',
-    scanPrompt: 'وجّه رمز هوية المريض إلى الماسح',
+    scanPrompt: 'وجّه رمز هوية المريض إلى الماسح أو افتح الكاميرا',
     scanBtn: 'مسح الرمز',
     scanning: 'جارٍ المسح…',
+    openCamera: 'فتح الكاميرا للمسح',
+    closeCamera: 'إغلاق الكاميرا',
+    cameraUnavailable: 'الكاميرا غير متاحة على هذا الجهاز — استخدم الإدخال اليدوي أو الماسح.',
+    scannerListening: 'الماسح جاهز — امسح الرمز الآن',
     manualLabel: 'أو أدخل رقم الإضبارة يدوياً',
     manualPlaceholder: 'مثال: 10234',
     resolve: 'بحث',
@@ -185,6 +189,8 @@ export const ar = {
     registerConsult: 'تسجيل استشارة',
     schedule: 'جدولة موعد',
     printId: 'طباعة الهوية',
+    filterNew: 'جدد للتسجيل',
+    clearFilter: 'إلغاء الفلتر',
   },
   registerConsult: {
     title: 'تسجيل استشارة',
@@ -261,6 +267,11 @@ export const ar = {
     doctorVerified: 'الطبيب موجود',
     verifyDoctor: 'تحقق من الطبيب',
     empty: 'لا توجد مواعيد',
+  },
+  // queue actions
+  queue: {
+    cancelToken: 'تم إلغاء رمز الطابور',
+    cancelAction: 'إلغاء الدور',
   },
   // id card
   idCard: {

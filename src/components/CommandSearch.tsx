@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { ConsultIcons } from './ConsultIcons'
 import { useStore } from '@/store/useStore'
+import { patientConsultNeeds } from '@/lib/consultRequests'
 import { ar } from '@/i18n/ar'
 import { formatAge } from '@/lib/utils'
 import { PendingRegistrationBadge } from './StatusBadges'
@@ -13,6 +14,7 @@ import { PendingRegistrationBadge } from './StatusBadges'
 /** File-number-first global search (§5). Names are secondary. */
 export function CommandSearch({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   const patients = useStore((s) => s.patients)
+  const consultRequests = useStore((s) => s.consultRequests)
   const [q, setQ] = useState('')
   const navigate = useNavigate()
 
@@ -78,7 +80,10 @@ export function CommandSearch({ open, onOpenChange }: { open: boolean; onOpenCha
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-bold truncate">{p.firstName} {p.familyName}</span>
-                  <ConsultIcons needs={p.consultationNeeds} patient={p} />
+                  {(() => {
+                    const needs = patientConsultNeeds(p, consultRequests)
+                    return needs.length > 0 ? <ConsultIcons needs={needs} patient={p} /> : null
+                  })()}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {[formatAge(p.dob), p.fatherName, p.residence.city].filter(Boolean).join(' · ')}

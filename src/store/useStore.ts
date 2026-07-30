@@ -3,7 +3,6 @@ import type {
   Appointment,
   AppNotification,
   CheckIn,
-  ConsultationType,
   ConsultRequest,
   Department,
   Patient,
@@ -92,6 +91,7 @@ interface StoreState {
   appointmentsLoading: boolean
   appointmentsError: boolean
   consultRequests: ConsultRequest[]
+  consultRequestsTotal: number
   consultRequestsLoading: boolean
   consultRequestsError: boolean
   notifications: AppNotification[]
@@ -120,6 +120,8 @@ interface StoreState {
   issueToken: (input: CheckInInput) => Promise<CheckInResult>
   callToken: (tokenId: string) => Promise<boolean>
   setTokenStatus: (tokenId: string, status: Token['status']) => Promise<boolean>
+  /** Client-side queue cancel until backend cancel endpoint exists. */
+  cancelQueueToken: (tokenId: string) => void
 
   // appointments
   fetchAppointments: (date: string) => Promise<Appointment[]>
@@ -227,6 +229,7 @@ export const useStore = create<StoreState>((set, get) => ({
   appointmentsLoading: false,
   appointmentsError: false,
   consultRequests: [],
+  consultRequestsTotal: 0,
   consultRequestsLoading: false,
   consultRequestsError: false,
   notifications: [],
@@ -272,6 +275,7 @@ export const useStore = create<StoreState>((set, get) => ({
       appointmentsLoading: false,
       appointmentsError: false,
       consultRequests: [],
+      consultRequestsTotal: 0,
       consultRequestsLoading: false,
       consultRequestsError: false,
       notifications: [],
@@ -514,6 +518,23 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
+  cancelQueueToken: (tokenId) => {
+    // TODO: integrate DELETE or PATCH /tokens/{id}/cancel when endpoint is available
+    const state = get()
+    const existing =
+      state.tokens.find((t) => t.id === tokenId)
+      ?? Object.values(state.queues).flat().find((r) => r.token.id === tokenId)?.token
+      ?? Object.values(state.displayQueues).flat().find((r) => r.token.id === tokenId)?.token
+    if (!existing || existing.status === 'cancelled' || existing.status === 'served') return
+    const cancelled: Token = { ...existing, status: 'cancelled' }
+    set(applyTokenUpdate(tokenId, cancelled))
+    get().pushToast({
+      variant: 'info',
+      title: ar.queue.cancelToken,
+      description: cancelled.number,
+    })
+  },
+
   fetchAppointments: async (date) => {
     const authToken = get().token
     if (!authToken) return []
@@ -578,28 +599,12 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const res = await fetchPendingConsultRequestsRequest(authToken)
       const consultRequests = (res.data ?? []).map(apiToConsultRequest)
-      set((s) => {
-        const byFile = new Map<string, ConsultationType[]>()
-        for (const req of consultRequests) {
-          const list = byFile.get(req.patientFileNo) ?? []
-          if (!list.includes(req.consultationType)) list.push(req.consultationType)
-          byFile.set(req.patientFileNo, list)
-        }
-        const mergeNeeds = (p: Patient): Patient => {
-          const extra = byFile.get(p.fileNoBasma)
-          if (!extra?.length) return p
-          return {
-            ...p,
-            consultationNeeds: [...new Set([...p.consultationNeeds, ...extra])],
-          }
-        }
-        return {
-          consultRequests,
-          consultRequestsLoading: false,
-          consultRequestsError: false,
-          patients: s.patients.map(mergeNeeds),
-          selectedPatient: s.selectedPatient ? mergeNeeds(s.selectedPatient) : null,
-        }
+      // Keep consultRequests as the source of pending icons — do not mutate patients.consultationNeeds
+      set({
+        consultRequests,
+        consultRequestsTotal: res.total ?? consultRequests.length,
+        consultRequestsLoading: false,
+        consultRequestsError: false,
       })
       return consultRequests
     } catch (err) {
@@ -618,14 +623,13 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const api = await createConsultRequestRequest(authToken, input)
       const req = apiToConsultRequest(api)
-      const addConsultType = (p: Patient): Patient =>
-        p.fileNoBasma === req.patientFileNo && !p.consultationNeeds.includes(req.consultationType)
-          ? { ...p, consultationNeeds: [...p.consultationNeeds, req.consultationType] }
-          : p
+      // Icons come from consultRequests + API consultation_needs — do not invent on the patient object
       set((s) => ({
         consultRequests: [...s.consultRequests.filter((r) => r.id !== req.id), req],
-        patients: s.patients.map(addConsultType),
-        selectedPatient: s.selectedPatient ? addConsultType(s.selectedPatient) : null,
+        consultRequestsTotal:
+          req.status === 'pending' && !s.consultRequests.some((r) => r.id === req.id)
+            ? s.consultRequestsTotal + 1
+            : s.consultRequestsTotal,
       }))
       return req
     } catch (err) {
@@ -645,25 +649,10 @@ export const useStore = create<StoreState>((set, get) => ({
     try {
       const api = await coordinateConsultRequestRequest(authToken, id)
       const req = apiToConsultRequest(api)
-      set((s) => {
-        const remainingPending = s.consultRequests.filter((r) => r.id !== id)
-        const syncPatient = (p: Patient): Patient => {
-          if (p.fileNoBasma !== req.patientFileNo) return p
-          const stillPendingType = remainingPending.some(
-            (r) => r.patientFileNo === req.patientFileNo && r.consultationType === req.consultationType,
-          )
-          if (stillPendingType) return p
-          return {
-            ...p,
-            consultationNeeds: p.consultationNeeds.filter((t) => t !== req.consultationType),
-          }
-        }
-        return {
-          consultRequests: remainingPending,
-          patients: s.patients.map(syncPatient),
-          selectedPatient: s.selectedPatient ? syncPatient(s.selectedPatient) : null,
-        }
-      })
+      set((s) => ({
+        consultRequests: s.consultRequests.filter((r) => r.id !== id),
+        consultRequestsTotal: Math.max(0, s.consultRequestsTotal - 1),
+      }))
       get().pushToast({ variant: 'success', title: ar.consult.reviewed })
       return req
     } catch (err) {

@@ -107,20 +107,54 @@ export function dashboardStats(
   tokens: Token[],
   patients: Patient[],
   todaysAppointmentCount: number,
+  pendingConsultCount = 0,
 ): DashboardStats {
   const active = tokens.filter((t) => t.status !== 'served' && t.status !== 'cancelled')
   const waitingTokens = active.filter((t) => t.status === 'waiting')
-  const activePatientFiles = new Set(active.map((t) => t.patientFileNo))
+  const pendingDataFiles = new Set(
+    active.filter((t) => t.pendingData).map((t) => t.patientFileNo),
+  )
   return {
     arrived: tokens.length,
     waiting: waitingTokens.length,
     served: tokens.filter((t) => t.status === 'served').length,
-    newToRegister: patients.filter((p) => p.unregistered).length,
+    newToRegister: patients.filter((p) =>
+      isNewForRegistration(p, { hasPendingTokenData: pendingDataFiles.has(p.fileNoBasma) }),
+    ).length,
     todaysAppointments: todaysAppointmentCount,
     activeEmergencies: active.filter((t) => t.isEmergency).length,
-    // patients currently in a queue who have an unmet consult need to coordinate
-    consultsToCoordinate: patients.filter(
-      (p) => activePatientFiles.has(p.fileNoBasma) && p.consultationNeeds.length > 0,
-    ).length,
+    consultsToCoordinate: pendingConsultCount,
   }
+}
+
+/** True when registration_date matches today's calendar date (ISO prefix). */
+export function isRegisteredToday(registrationDate: string | undefined | null, today = new Date()): boolean {
+  if (!registrationDate) return false
+  const day = registrationDate.slice(0, 10)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return false
+  const y = today.getFullYear()
+  const m = String(today.getMonth() + 1).padStart(2, '0')
+  const d = String(today.getDate()).padStart(2, '0')
+  return day === `${y}-${m}-${d}`
+}
+
+/** Patients needing full registration — includes emergency with incomplete data. */
+export function isNewForRegistration(
+  p: Patient,
+  opts?: { hasPendingTokenData?: boolean },
+): boolean {
+  if (opts?.hasPendingTokenData) return true
+  if (p.unregistered === true) return true
+  if (p.registrationStatus === 'partial' || p.registrationStatus === 'pending') return true
+  if (isRegisteredToday(p.registrationDate)) return true
+  // Emergency / quick-create placeholders still awaiting completion
+  if (p.familyName === '—' || p.lifeStatus === 'unknown' && !p.dob && !p.gender) return true
+  return false
+}
+
+/** Count pending consult requests from the API only (do not invent from local patient fields). */
+export function countConsultsNeedingCoordination(
+  consultRequests: { status: string }[],
+): number {
+  return consultRequests.filter((c) => c.status === 'pending').length
 }

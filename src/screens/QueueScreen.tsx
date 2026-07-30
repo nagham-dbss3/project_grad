@@ -15,6 +15,7 @@ export function QueueScreen() {
   const queuesError = useStore((s) => s.queuesError)
   const fetchQueues = useStore((s) => s.fetchQueues)
   const fetchPatients = useStore((s) => s.fetchPatients)
+  const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
   const getPatient = useStore((s) => s.getPatient)
   const callToken = useStore((s) => s.callToken)
   const pushToast = useStore((s) => s.pushToast)
@@ -43,7 +44,8 @@ export function QueueScreen() {
   useEffect(() => {
     fetchQueues()
     fetchPatients()
-  }, [fetchQueues, fetchPatients])
+    void fetchPendingConsultRequests()
+  }, [fetchQueues, fetchPatients, fetchPendingConsultRequests])
 
   return (
     <div>

@@ -39,9 +39,11 @@ export function PatientRecordScreen() {
   const appointments = useStore((s) => s.appointments)
   const consultRequests = useStore((s) => s.consultRequests)
   const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
+  const coordinateConsultRequest = useStore((s) => s.coordinateConsultRequest)
   const pushToast = useStore((s) => s.pushToast)
   const { getDepartmentLabel, getReferralLabel } = useMasterData()
   const [tab, setTab] = useState('overview')
+  const [coordinatingId, setCoordinatingId] = useState<string | null>(null)
 
   useEffect(() => {
     if (fileNo) {
@@ -192,7 +194,22 @@ export function PatientRecordScreen() {
                             <li key={r.id} className="rounded-lg border bg-muted/30 p-3">
                               <div className="flex items-center justify-between gap-2 flex-wrap">
                                 <span className="font-bold">{consultLabel[r.consultationType]}</span>
-                                <Badge variant="warning">{r.status}</Badge>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="warning">{r.status}</Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={coordinatingId === r.id}
+                                    onClick={async () => {
+                                      setCoordinatingId(r.id)
+                                      await coordinateConsultRequest(r.id)
+                                      setCoordinatingId(null)
+                                    }}
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    {ar.consult.complete}
+                                  </Button>
+                                </div>
                               </div>
                               {r.notes && <p className="text-muted-foreground mt-1">{r.notes}</p>}
                               <p className="text-xs text-muted-foreground mt-1">{formatDate(r.createdAt)} · {formatTime(r.createdAt)}</p>

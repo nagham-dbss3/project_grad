@@ -300,6 +300,11 @@ export function apiToPatient(api: ApiPatient): Patient {
     lifeStatus: lifeStatusFromApi[api.life_status ?? ''] ?? 'alive',
     consultationNeeds: parseConsultationNeeds(api.consultation_needs),
     registrationDate: api.registration_date || '',
+    registrationStatus: api.registration_status || undefined,
+    unregistered:
+      api.registration_status === 'partial'
+      || api.registration_status === 'pending'
+      || undefined,
     diagnosis: api.diagnosis || undefined,
     currentPhase: api.current_phase || undefined,
     criticalFlags: api.critical_flags ?? undefined,
@@ -435,6 +440,9 @@ export interface ApiQueueItem {
   patient_file_no?: string
   department?: string
   issue_time?: string
+  created_at?: string
+  arrival_time?: string
+  check_in_time?: string
   status?: string
   is_emergency?: boolean
   visible_to_guardian?: boolean
@@ -445,6 +453,7 @@ export interface ApiQueueItem {
     id?: string
     patient_file_no?: string
     arrival_time?: string
+    created_at?: string
     department?: string
     visit_reason?: string
     method?: string
@@ -468,12 +477,13 @@ function stubPatientFromQueueItem(item: ApiQueueItem): Patient | undefined {
 
 export function apiToQueueRow(item: ApiQueueItem): QueueRow {
   const dept = resolveDept(item.department)
+  const issueTime = item.issue_time || item.created_at || new Date().toISOString()
   const token: Token = {
     id: String(item.id ?? genId('tk')),
     number: item.number ?? '—',
     patientFileNo: item.patient_file_no ?? '',
     department: dept,
-    issueTime: item.issue_time ?? new Date().toISOString(),
+    issueTime,
     status: (item.status ?? 'waiting') as TokenStatus,
     isEmergency: Boolean(item.is_emergency),
     visibleToGuardian: item.visible_to_guardian ?? true,
@@ -481,19 +491,28 @@ export function apiToQueueRow(item: ApiQueueItem): QueueRow {
   }
   const patient = item.patient ? apiToPatient(item.patient) : stubPatientFromQueueItem(item)
   const ci = item.check_in
-  const checkIn: CheckIn | undefined = ci
-    ? {
-        id: ci.id ?? genId('ci'),
-        patientFileNo: ci.patient_file_no ?? token.patientFileNo,
-        arrivalTime: ci.arrival_time ?? token.issueTime,
-        department: resolveDept(ci.department) ?? dept,
-        visitReason: ci.visit_reason ?? '',
-        method: (ci.method ?? 'manual') as CheckInMethod,
-        isEmergency: Boolean(ci.is_emergency),
-        receptionStaffId: '',
-      }
-    : undefined
-  return { token, patient, checkIn }
+  // Prefer nested check-in arrival, then top-level arrival fields, then token issue time
+  const arrivalTime =
+    ci?.arrival_time
+    || ci?.created_at
+    || item.arrival_time
+    || item.check_in_time
+    || issueTime
+  const checkIn: CheckIn = {
+    id: ci?.id ?? genId('ci'),
+    patientFileNo: ci?.patient_file_no ?? token.patientFileNo,
+    arrivalTime,
+    department: resolveDept(ci?.department) ?? dept,
+    visitReason: ci?.visit_reason ?? '',
+    method: (ci?.method ?? 'manual') as CheckInMethod,
+    isEmergency: Boolean(ci?.is_emergency ?? item.is_emergency),
+    receptionStaffId: '',
+  }
+  const enrichedPatient =
+    patient && token.pendingData
+      ? { ...patient, unregistered: true as const }
+      : patient
+  return { token, patient: enrichedPatient, checkIn }
 }
 
 export function parseDepartmentQueues(res: unknown): QueueRow[] {
@@ -995,9 +1014,9 @@ export function parseConsultListResponse(res: unknown): ConsultRequestsListRespo
 export function apiToConsultRequest(api: ApiConsultRequest): ConsultRequest {
   return {
     id: String(api.id),
-    patientFileNo: api.patient_file_no,
+    patientFileNo: String(api.patient_file_no ?? '').trim(),
     consultationType: parseConsultType(api.consultation_type),
-    status: api.status,
+    status: String(api.status ?? '').trim().toLowerCase(),
     notes: api.notes,
     requestedBy: api.requested_by,
     createdAt: api.created_at,

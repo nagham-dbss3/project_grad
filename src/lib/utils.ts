@@ -37,10 +37,14 @@ export function todayIsoDate(d: Date = new Date()): string {
   return `${y}-${m}-${day}`
 }
 
-/** Format an ISO time to HH:MM (24h). */
-export function formatTime(iso: string): string {
+/** Format an ISO time to HH:mm (24h). Returns em dash when invalid. */
+export function formatTime(iso: string | null | undefined): string {
+  if (!iso?.trim()) return '—'
   const d = new Date(iso)
-  return d.toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (Number.isNaN(d.getTime())) return '—'
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  return `${hh}:${mm}`
 }
 
 /** Format an ISO date to a readable Arabic date. Empty when value is missing. */
@@ -56,13 +60,15 @@ export function waitMinutes(arrivalIso: string, now: Date = new Date()): number 
   return Math.max(0, Math.round((now.getTime() - new Date(arrivalIso).getTime()) / 60000))
 }
 
-/** Human wait duration in Arabic, e.g. "12 دقيقة" or "ساعة و5 دقائق". */
-export function formatWait(arrivalIso: string): string {
-  const mins = waitMinutes(arrivalIso)
+/** Human wait duration in Arabic, e.g. "23 دقيقة" or "1 ساعة و15 دقيقة". */
+export function formatWait(arrivalIso: string, now: Date = new Date()): string {
+  const mins = waitMinutes(arrivalIso, now)
+  if (mins < 1) return 'أقل من دقيقة'
   if (mins < 60) return `${mins} دقيقة`
   const h = Math.floor(mins / 60)
   const m = mins % 60
-  return m ? `${h} ساعة و${m} دقيقة` : `${h} ساعة`
+  if (m === 0) return h === 1 ? 'ساعة واحدة' : `${h} ساعة`
+  return `${h === 1 ? '1 ساعة' : `${h} ساعة`} و${m} دقيقة`
 }
 
 let idCounter = 1000

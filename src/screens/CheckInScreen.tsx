@@ -24,6 +24,8 @@ import { useStore } from '@/store/useStore'
 
 import { hasActiveCheckInToday } from '@/lib/patientVisit'
 
+import { patientConsultNeeds } from '@/lib/consultRequests'
+
 import { ar } from '@/i18n/ar'
 
 import { useMasterData } from '@/lib/useMasterData'
@@ -61,6 +63,8 @@ export function CheckInScreen() {
   const pushToast = useStore((s) => s.pushToast)
 
   const pushNotification = useStore((s) => s.pushNotification)
+
+  const consultRequests = useStore((s) => s.consultRequests)
 
   const { departmentOptions, getDepartmentLabel } = useMasterData()
 
@@ -325,7 +329,7 @@ export function CheckInScreen() {
 
                     <p className="font-bold text-lg">{patient.firstName} {patient.familyName}</p>
 
-                    <ConsultIcons needs={patient.consultationNeeds} patient={patient} />
+                    <ConsultIcons needs={patientConsultNeeds(patient, consultRequests)} patient={patient} />
 
                   </div>
 

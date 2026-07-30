@@ -1,42 +1,48 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
+import QRCode from 'qrcode'
 
-/** Visual QR-style pattern derived from the patient file number (display only). */
+/** Real QR code encoding the patient Basma file number (`file_no_basma`). */
 export function PatientQR({ value, size = 132 }: { value: string; size?: number }) {
-  const cells = 21
-  const grid = useMemo(() => {
-    let seed = 0
-    for (let i = 0; i < value.length; i++) seed = (seed * 31 + value.charCodeAt(i)) % 2147483647
-    const rand = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff
-      return seed / 0x7fffffff
-    }
-    const g: boolean[][] = []
-    for (let r = 0; r < cells; r++) {
-      g[r] = []
-      for (let c = 0; c < cells; c++) g[r][c] = rand() > 0.5
-    }
-    const place = (or: number, oc: number) => {
-      for (let r = 0; r < 7; r++)
-        for (let c = 0; c < 7; c++) {
-          const edge = r === 0 || r === 6 || c === 0 || c === 6
-          const center = r >= 2 && r <= 4 && c >= 2 && c <= 4
-          g[or + r][oc + c] = edge || center
-        }
-    }
-    place(0, 0)
-    place(0, cells - 7)
-    place(cells - 7, 0)
-    return g
-  }, [value])
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
 
-  const cell = size / cells
+  useEffect(() => {
+    let cancelled = false
+    if (!value.trim()) {
+      setDataUrl(null)
+      return
+    }
+    void QRCode.toDataURL(value.trim(), {
+      width: size * 2,
+      margin: 1,
+      color: { dark: '#112438', light: '#ffffff' },
+      errorCorrectionLevel: 'M',
+    }).then((url) => {
+      if (!cancelled) setDataUrl(url)
+    }).catch(() => {
+      if (!cancelled) setDataUrl(null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [value, size])
+
+  if (!dataUrl) {
+    return (
+      <div
+        className="rounded-md bg-muted animate-pulse shrink-0"
+        style={{ width: size, height: size }}
+        aria-hidden
+      />
+    )
+  }
+
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} role="img" aria-label={`رمز ${value}`} className="rounded-md bg-white">
-      {grid.map((row, r) =>
-        row.map((on, c) =>
-          on ? <rect key={`${r}-${c}`} x={c * cell} y={r * cell} width={cell} height={cell} fill="#112438" /> : null,
-        ),
-      )}
-    </svg>
+    <img
+      src={dataUrl}
+      width={size}
+      height={size}
+      alt={`رمز QR — ${value}`}
+      className="rounded-md bg-white shrink-0"
+    />
   )
 }
