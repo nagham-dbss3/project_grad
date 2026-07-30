@@ -12,9 +12,9 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://api.basma-unit.cloud:8080',
+        target: 'https://api.basma-unit.cloud',
         changeOrigin: true,
-        secure: false,
+        secure: true,
       },
     },
   },

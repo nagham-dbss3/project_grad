@@ -12,7 +12,7 @@ Reception is the single cross-department entry point: check-in (مسح QR / إد
 | المتطلب | التفاصيل |
 |---|---|
 | **Node.js** | 18+ |
-| **خادم API** | `http://api.basma-unit.cloud:8080` |
+| **خادم API** | `https://api.basma-unit.cloud/api` |
 | **متصفح حديث** | Chrome / Edge / Firefox (للكاميرا: إذن الوصول للكاميرا عند المسح) |
 
 ---
@@ -40,14 +40,14 @@ npm run preview    # معاينة الإصدار المبني
 
 | المتغير | القيمة الافتراضية | الوصف |
 |---|---|---|
-| `VITE_API_BASE_URL` | `/api` | قاعدة مسار الطلبات من الواجهة |
+| `VITE_API_BASE_URL` | `https://api.basma-unit.cloud/api` | قاعدة مسار الطلبات من الواجهة |
 | `VITE_FIREBASE_*` | — | إعدادات Firebase Cloud Messaging (اختياري للإشعارات الدفعية) |
 | `VITE_FIREBASE_VAPID_KEY` | — | مفتاح Web Push (VAPID) |
 
 مثال [`.env`](.env):
 
 ```env
-VITE_API_BASE_URL=/api
+VITE_API_BASE_URL=https://api.basma-unit.cloud/api
 
 # Firebase Cloud Messaging (اختياري)
 VITE_FIREBASE_API_KEY=...
@@ -61,9 +61,8 @@ VITE_FIREBASE_VAPID_KEY=...
 
 في التطوير:
 
-1. المتصفح يطلب `http://localhost:5173/api/...`
-2. Vite proxy يوجّه إلى `http://api.basma-unit.cloud:8080/api/...` (انظر [`vite.config.ts`](vite.config.ts))
-3. الهدف: تفادي مشاكل **CORS** عند الاتصال بالخادم مباشرة
+1. الطلبات تذهب إلى `https://api.basma-unit.cloud/api/...`
+2. إن استخدمت `VITE_API_BASE_URL=/api` بدل الرابط الكامل، Vite proxy يوجّه إلى `https://api.basma-unit.cloud` (انظر [`vite.config.ts`](vite.config.ts))
 
 طبقة الطلبات: [`src/lib/api.ts`](src/lib/api.ts) عبر **Axios** مع:
 
