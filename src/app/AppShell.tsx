@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
@@ -48,8 +48,12 @@ export function AppShell() {
   const [searchOpen, setSearchOpen] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const staff = useStore((s) => s.staff)
-  const notifications = useStore((s) => s.notifications)
-  const unread = notifications.filter((n) => !n.isRead).length
+  const unread = useStore((s) => s.unreadCount)
+  const fetchNotifications = useStore((s) => s.fetchNotifications)
+
+  useEffect(() => {
+    void fetchNotifications()
+  }, [fetchNotifications])
 
   return (
     <div className="min-h-screen flex flex-col">

@@ -1,39 +1,37 @@
-import { ApiError, registerFcmTokenRequest } from '@/lib/api'
+﻿import { ApiError, registerFcmTokenRequest } from '@/lib/api'
 import { getFcmToken } from '@/lib/fcm'
 
 export type FcmSyncResult = {
   fcmToken: string | null
-  /** true when Backend accepted the token; false when endpoint is missing/unavailable */
+  /** true when Backend accepted the token */
   registered: boolean
 }
 
 /**
- * Independent service: obtain an FCM token after login and register it with the Backend.
- * Backend endpoint: POST /fcm-tokens (to be implemented server-side).
- *
- * A 404 from the API is treated as "endpoint not ready yet" — the local FCM token is still valid.
+ * Obtain an FCM token after login (browser permission) and register it with the Backend.
+ * Backend endpoint: POST /device-tokens `{ token, platform: "web" }`.
  */
 export async function syncFcmTokenWithBackend(authToken: string): Promise<FcmSyncResult> {
+  console.log('[FCM] بدء مزامنة توكن الجهاز مع الخادم (POST /device-tokens)…')
   const fcmToken = await getFcmToken()
-  if (!fcmToken) return { fcmToken: null, registered: false }
-
-  if (import.meta.env.DEV) {
-    console.info('[FCM] Device token ready:', fcmToken)
+  if (!fcmToken) {
+    console.warn('[FCM] لا يوجد توكن جهاز — تخطّي التسجيل في الـ API')
+    return { fcmToken: null, registered: false }
   }
 
   try {
-    await registerFcmTokenRequest(authToken, fcmToken)
-    return { fcmToken, registered: true }
+    const res = await registerFcmTokenRequest(authToken, fcmToken)
+    console.log('[FCM] نجح تسجيل التوكن في /device-tokens:', res)
+    return { fcmToken, registered: Boolean(res?.registered ?? true) }
   } catch (err) {
-    // Backend route not implemented yet — expected until server ships POST /fcm-tokens
     if (err instanceof ApiError && err.status === 404) {
-      if (import.meta.env.DEV) {
-        console.info(
-          '[FCM] Backend POST /fcm-tokens is not available yet (404). Token was generated locally and will sync when the API is ready.',
-        )
-      }
+      console.warn(
+        '[FCM] POST /device-tokens أعاد 404 — التوكن محلي فقط:',
+        fcmToken,
+      )
       return { fcmToken, registered: false }
     }
+    console.error('[FCM] فشل POST /device-tokens:', err)
     throw err
   }
 }

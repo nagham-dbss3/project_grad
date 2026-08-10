@@ -5,7 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { EmptyState, ListSkeleton } from '@/components/ui/states'
+import { EmptyState, ErrorState, ListSkeleton } from '@/components/ui/states'
 import { PatientContextBar } from '@/components/PatientContextBar'
 import { ConsultLegend } from '@/components/ConsultIcons'
 import { consultRequestsForPatient, patientConsultNeeds } from '@/lib/consultRequests'
@@ -40,6 +40,10 @@ export function PatientRecordScreen() {
   const consultRequests = useStore((s) => s.consultRequests)
   const fetchPendingConsultRequests = useStore((s) => s.fetchPendingConsultRequests)
   const coordinateConsultRequest = useStore((s) => s.coordinateConsultRequest)
+  const patientCheckIns = useStore((s) => s.patientCheckIns)
+  const patientCheckInsLoading = useStore((s) => s.patientCheckInsLoading)
+  const patientCheckInsError = useStore((s) => s.patientCheckInsError)
+  const fetchPatientCheckIns = useStore((s) => s.fetchPatientCheckIns)
   const pushToast = useStore((s) => s.pushToast)
   const { getDepartmentLabel, getReferralLabel } = useMasterData()
   const [tab, setTab] = useState('overview')
@@ -50,8 +54,9 @@ export function PatientRecordScreen() {
       fetchPatientDetails(fileNo)
       fetchQueues()
       void fetchPendingConsultRequests()
+      void fetchPatientCheckIns(fileNo)
     }
-  }, [fileNo, fetchPatientDetails, fetchQueues, fetchPendingConsultRequests])
+  }, [fileNo, fetchPatientDetails, fetchQueues, fetchPendingConsultRequests, fetchPatientCheckIns])
 
   if (patientLoading) {
     return <ListSkeleton rows={6} />
@@ -67,7 +72,7 @@ export function PatientRecordScreen() {
   const alreadyCheckedIn = hasActiveCheckInToday(patient.fileNoBasma, tokens, checkIns, queues)
   const patientAppointments = appointments.filter((a) => a.patientFileNo === patient.fileNoBasma)
   const upcoming = patientAppointments.filter((a) => a.status !== 'cancelled' && a.status !== 'completed').sort((a, b) => a.dateTime.localeCompare(b.dateTime))
-  const history = checkIns.filter((c) => c.patientFileNo === patient.fileNoBasma)
+  const history = patientCheckIns
 
   // Faithful display: show what was saved, leave anything missing blank.
   const enumLabel = <T extends string>(arr: { value: T; label: string }[], present: unknown, mapped?: T) =>
@@ -287,20 +292,26 @@ export function PatientRecordScreen() {
           </CardContent></Card>
         </TabsContent>
 
-        {/* Visit history */}
+        {/* Visit history from GET /patients/{fileNo}/check-ins */}
         <TabsContent value="history">
           <Card><CardContent className="p-4">
             <h3 className="font-bold mb-3">{ar.record.history}</h3>
-            {history.length ? (
+            {patientCheckInsLoading ? (
+              <ListSkeleton rows={4} />
+            ) : patientCheckInsError ? (
+              <ErrorState onRetry={() => void fetchPatientCheckIns(patient.fileNoBasma)} />
+            ) : history.length ? (
               <div className="divide-y">
                 {history.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 py-3 text-sm">
+                  <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3 text-sm">
                     <Clock className="h-4 w-4 text-muted-foreground shrink-0" />
                     <span className="font-bold">{formatDate(c.arrivalTime)}</span>
                     <span className="text-muted-foreground">{formatTime(c.arrivalTime)}</span>
                     <Badge variant="muted">{getDepartmentLabel(c.department)}</Badge>
                     {c.isEmergency && <Badge variant="warning">{ar.common.emergencyTag}</Badge>}
-                    <span className="text-muted-foreground ms-auto truncate">{c.visitReason}</span>
+                    <span className="text-muted-foreground ms-auto truncate max-w-full sm:max-w-[14rem]">
+                      {c.visitReason || '—'}
+                    </span>
                   </div>
                 ))}
               </div>

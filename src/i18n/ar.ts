@@ -103,7 +103,7 @@ export const ar = {
     password: 'كلمة المرور',
     signIn: 'دخول',
     locked: 'تم قفل الحساب مؤقتاً بعد عدة محاولات فاشلة. حاول لاحقاً.',
-    invalid: 'اسم المستخدم أو كلمة المرور غير صحيحة.',
+    invalid: 'تحقق من كلمة المرور أو الإيميل.',
     connection: 'تعذّر الاتصال بالخادم. تحقّق من الاتصال أو إعداد عنوان الـ API.',
     usernameRequired: 'يرجى إدخال اسم المستخدم.',
     usernameInvalid: 'اسم المستخدم يحتوي على رموز غير صحيحة.',
@@ -214,6 +214,9 @@ export const ar = {
     editAdmin: 'تعديل البيانات الإدارية',
     lifeStatus: 'الحالة الحيوية',
     noHistory: 'لا يوجد سجل زيارات سابق',
+    visitMethod: 'طريقة الوصول',
+    methodScan: 'مسح',
+    methodManual: 'يدوي',
   },
   // life status
   lifeStatus: {
@@ -266,6 +269,9 @@ export const ar = {
     doctorNotFound: 'الطبيب غير موجود — تحقق من الاسم',
     doctorVerified: 'الطبيب موجود',
     verifyDoctor: 'تحقق من الطبيب',
+    selectDoctor: 'اختر الطبيب',
+    loadingDoctors: 'جارٍ تحميل الأطباء…',
+    noDoctors: 'لا يوجد أطباء لهذا القسم',
     empty: 'لا توجد مواعيد',
   },
   // queue actions

@@ -3,6 +3,10 @@ import { getFirebaseMessaging, isFirebaseConfigured } from '@/lib/firebase'
 
 const SW_PATH = '/firebase-messaging-sw.js'
 
+/** Explicit VAPID key for web push (getToken). Env override allowed when set. */
+const DEFAULT_VAPID_KEY =
+  'BH7fLAE3HMS98a-h65e3ETnYm8hGkcyEAU2i05ZJK8jwaj_WOADhjjNsKRA9PlT7rgRzUcs496eflWya-_4z3zY'
+
 function waitForWorkerActivation(worker: ServiceWorker): Promise<void> {
   if (worker.state === 'activated') return Promise.resolve()
 
@@ -57,11 +61,22 @@ export async function registerMessagingServiceWorker(): Promise<ServiceWorkerReg
  * Returns null when Firebase is not configured, unsupported, or permission denied.
  */
 export async function getFcmToken(): Promise<string | null> {
-  if (!isFirebaseConfigured()) return null
-  if (typeof window === 'undefined' || !('Notification' in window)) return null
+  if (!isFirebaseConfigured()) {
+    console.warn('[FCM] Firebase غير مُعدّ — تأكد من متغيرات VITE_FIREBASE_*')
+    return null
+  }
+  if (typeof window === 'undefined' || !('Notification' in window)) {
+    console.warn('[FCM] المتصفح لا يدعم Notification API')
+    return null
+  }
 
   const messaging = await getFirebaseMessaging()
-  if (!messaging) return null
+  if (!messaging) {
+    console.warn('[FCM] تعذّر تهيئة Firebase Messaging')
+    return null
+  }
+
+  console.log('[FCM] إذن الإشعارات الحالي:', Notification.permission)
 
   const permission =
     Notification.permission === 'granted'
@@ -70,23 +85,43 @@ export async function getFcmToken(): Promise<string | null> {
         ? 'denied'
         : await Notification.requestPermission()
 
-  if (permission !== 'granted') return null
+  console.log('[FCM] إذن الإشعارات بعد الطلب:', permission)
 
-  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim()
-  if (!vapidKey) {
-    console.warn('[FCM] VITE_FIREBASE_VAPID_KEY is missing')
+  if (permission !== 'granted') {
+    console.warn('[FCM] الإذن مرفوض — لن يتم توليد توكن الجهاز')
     return null
   }
 
+  const vapidKey = import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim() || DEFAULT_VAPID_KEY
+  if (!vapidKey) {
+    console.warn('[FCM] VAPID key is missing')
+    return null
+  }
+
+  console.log(
+    '[FCM] استخدام VAPID key:',
+    import.meta.env.VITE_FIREBASE_VAPID_KEY?.trim() ? 'من .env' : 'المفتاح الافتراضي في الكود',
+    `(${vapidKey.slice(0, 12)}…)`,
+  )
+
   // Explicit register + wait for active SW, then pass registration into getToken.
   const serviceWorkerRegistration = await registerMessagingServiceWorker()
-  if (!serviceWorkerRegistration) return null
+  if (!serviceWorkerRegistration) {
+    console.warn('[FCM] فشل تسجيل Service Worker')
+    return null
+  }
+  console.log('[FCM] Service Worker جاهز')
 
   try {
     const token = await getToken(messaging, {
       vapidKey,
       serviceWorkerRegistration,
     })
+    if (token) {
+      console.log('[FCM] تم توليد Device Token:', token)
+    } else {
+      console.warn('[FCM] getToken أعاد قيمة فارغة')
+    }
     return token || null
   } catch (err) {
     console.warn('[FCM] getToken failed', err)

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { CalendarPlus, AlertTriangle, CheckCircle2, Search } from 'lucide-react'
+import { CalendarPlus, AlertTriangle, CheckCircle2, Search, Loader2 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { AppointmentRow } from '@/components/AppointmentRow'
 import { useStore } from '@/store/useStore'
 import { apiToAppointment, fetchAppointmentsRequest } from '@/lib/api'
+import { doctorsForDepartment } from '@/lib/masterData'
 import { ar } from '@/i18n/ar'
 import { useMasterData } from '@/lib/useMasterData'
 import { formatTime, todayIsoDate } from '@/lib/utils'
@@ -26,6 +27,8 @@ export function AppointmentsScreen() {
   const getPatient = useStore((s) => s.getPatient)
   const fetchAppointments = useStore((s) => s.fetchAppointments)
   const token = useStore((s) => s.token)
+  const doctors = useStore((s) => s.doctors)
+  const fetchDoctors = useStore((s) => s.fetchDoctors)
   const createAppointment = useStore((s) => s.createAppointment)
   const pushNotification = useStore((s) => s.pushNotification)
   const pushToast = useStore((s) => s.pushToast)
@@ -38,12 +41,30 @@ export function AppointmentsScreen() {
   const [fileNo, setFileNo] = useState(patientFileFromUrl)
   const [department, setDepartment] = useState<Department>('clinic')
   const [doctorId, setDoctorId] = useState('')
+  const [doctorsLoading, setDoctorsLoading] = useState(false)
 
   useEffect(() => {
     if (departmentOptions.length && !departmentOptions.some((d) => d.value === department)) {
       setDepartment(departmentOptions[0].value)
     }
   }, [departmentOptions, department])
+
+  useEffect(() => {
+    let cancelled = false
+    setDoctorId('')
+    setDoctorsLoading(true)
+    void fetchDoctors(department).finally(() => {
+      if (!cancelled) setDoctorsLoading(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [department, fetchDoctors])
+
+  const doctorOptions = useMemo(
+    () => doctorsForDepartment(doctors, department),
+    [doctors, department],
+  )
   const [date, setDate] = useState(todayIsoDate())
   const [listDate, setListDate] = useState(todayIsoDate())
   const [time, setTime] = useState('')
@@ -182,18 +203,32 @@ export function AppointmentsScreen() {
 
             <div className="grid sm:grid-cols-2 gap-3">
               <Field label={ar.common.department}>
-                <Select value={department} onChange={(e) => { setDepartment(e.target.value as Department); setDoctorId('') }}>
+                <Select value={department} onChange={(e) => setDepartment(e.target.value as Department)}>
                   {departmentOptions.map((d) => <option key={d.value} value={d.value}>{d.label}</option>)}
                 </Select>
               </Field>
               <Field label={ar.appt.doctor} required>
-                <Input
-                  type="number"
-                  min={1}
-                  value={doctorId}
-                  onChange={(e) => setDoctorId(e.target.value)}
-                  placeholder="معرّف الطبيب"
-                />
+                <div className="relative">
+                  <Select
+                    value={doctorId}
+                    onChange={(e) => setDoctorId(e.target.value)}
+                    disabled={doctorsLoading || doctorOptions.length === 0}
+                  >
+                    <option value="">
+                      {doctorsLoading
+                        ? ar.appt.loadingDoctors
+                        : doctorOptions.length
+                          ? ar.appt.selectDoctor
+                          : ar.appt.noDoctors}
+                    </option>
+                    {doctorOptions.map((d) => (
+                      <option key={d.id} value={String(d.id)}>{d.name}</option>
+                    ))}
+                  </Select>
+                  {doctorsLoading ? (
+                    <Loader2 className="absolute end-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground pointer-events-none" />
+                  ) : null}
+                </div>
               </Field>
               <Field label={ar.appt.date}><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
               <Field label={ar.appt.type}>

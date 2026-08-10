@@ -17,6 +17,7 @@ function payloadData(payload: MessagePayload): FcmMessageData {
 export function useFcm(): void {
   const authToken = useStore((s) => s.token)
   const pushToast = useStore((s) => s.pushToast)
+  const fetchNotifications = useStore((s) => s.fetchNotifications)
   const navigate = useNavigate()
   const syncedForToken = useRef<string | null>(null)
 
@@ -30,10 +31,12 @@ export function useFcm(): void {
     let unsubscribe: (() => void) | null = null
 
     const run = async () => {
+      // After login: request browser permission + register device token on POST /device-tokens
       if (syncedForToken.current !== authToken) {
         try {
-          const { fcmToken } = await syncFcmTokenWithBackend(authToken)
-          // Mark attempted even if Backend is not ready yet (404), so we don't spam retries.
+          console.log('[FCM] useFcm: تسجيل دخول مكتمل — بدء مزامنة التوكن')
+          const { fcmToken, registered } = await syncFcmTokenWithBackend(authToken)
+          console.log('[FCM] useFcm: نتيجة المزامنة', { hasToken: Boolean(fcmToken), registered })
           if (!cancelled && fcmToken) syncedForToken.current = authToken
         } catch (err) {
           console.warn('[FCM] Token sync with backend failed', err)
@@ -43,6 +46,7 @@ export function useFcm(): void {
       if (cancelled) return
 
       unsubscribe = await subscribeToForegroundMessages((payload) => {
+        console.log('[FCM] إشعار foreground وصل:', payload)
         const data = payloadData(payload)
         const title = payload.notification?.title?.trim() || ar.notif.pushTitle
         const description = payload.notification?.body?.trim() || undefined
@@ -54,6 +58,7 @@ export function useFcm(): void {
           description,
           route,
         })
+        void fetchNotifications()
       })
     }
 
@@ -63,7 +68,7 @@ export function useFcm(): void {
       cancelled = true
       unsubscribe?.()
     }
-  }, [authToken, pushToast])
+  }, [authToken, pushToast, fetchNotifications])
 
   // Background / SW: navigate when user clicks a system notification
   useEffect(() => {

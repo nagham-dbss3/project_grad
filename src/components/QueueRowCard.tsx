@@ -88,9 +88,8 @@ export function QueueRowCard({
   }
 
   const handleCancel = () => {
-    // TODO: integrate DELETE or PATCH /tokens/{id}/cancel when endpoint is available
     setMenuOpen(false)
-    cancelQueueToken(token.id)
+    void cancelQueueToken(token.id)
   }
 
   const handleCall = async () => {
@@ -177,7 +176,7 @@ export function QueueRowCard({
                   onClick={handleCancel}
                 >
                   <X className="h-4 w-4" />
-                  إلغاء الدور
+                  {ar.queue.cancelAction}
                 </button>
               </div>
             )}

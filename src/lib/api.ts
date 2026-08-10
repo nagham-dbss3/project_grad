@@ -3,6 +3,7 @@ import type {
   Appointment,
   AppointmentStatus,
   AppointmentType,
+  AppNotification,
   Caregiver,
   CaregiverEducation,
   CheckIn,
@@ -11,6 +12,7 @@ import type {
   Department,
   LifeStatus,
   Nationality,
+  NotificationType,
   ConsultRequest,
   Patient,
   Token,
@@ -141,9 +143,18 @@ export function logoutRequest(token: string): Promise<void> {
   return request<void>('/auth/logout', token, { method: 'POST' })
 }
 
-/** Register the device FCM token with the Backend (POST /fcm-tokens). */
-export function registerFcmTokenRequest(authToken: string, fcmToken: string): Promise<void> {
-  return request<void>('/fcm-tokens', authToken, {
+/** Register the device FCM token with the Backend (POST /device-tokens). */
+export interface RegisterDeviceTokenResponse {
+  id: number
+  platform: string
+  registered: boolean
+}
+
+export function registerFcmTokenRequest(
+  authToken: string,
+  fcmToken: string,
+): Promise<RegisterDeviceTokenResponse> {
+  return request<RegisterDeviceTokenResponse>('/device-tokens', authToken, {
     method: 'POST',
     body: JSON.stringify({ token: fcmToken, platform: 'web' }),
   })
@@ -411,18 +422,28 @@ export async function fetchReferralOptionsRequest(token: string): Promise<Master
   return rows.map(referralOptionFromJson).filter((r): r is MasterReferralOption => r != null)
 }
 
+function doctorNameFromJson(o: Record<string, unknown>): string {
+  const direct = String(o.name ?? o.full_name ?? '').trim()
+  if (direct) return direct
+  const parts = [o.first_name, o.last_name, o.family_name]
+    .map((v) => (v != null ? String(v).trim() : ''))
+    .filter(Boolean)
+  return parts.join(' ')
+}
+
+/** GET `/doctors?department=` — doctors for appointment booking (and master filters). */
 export async function fetchDoctorsRequest(token: string, department?: Department): Promise<MasterDoctor[]> {
   const query = department ? `?department=${encodeURIComponent(DEPT_TO_API[department])}` : ''
-  const rows = toArray(await request<unknown>(`/master/doctors${query}`, token, { method: 'GET' }))
+  const rows = toArray(await request<unknown>(`/doctors${query}`, token, { method: 'GET' }))
   return rows
     .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
     .map((o) => ({
       id: Number(o.id) || 0,
-      name: String(o.name ?? ''),
+      name: doctorNameFromJson(o),
       department: o.department != null ? String(o.department) : undefined,
       active: o.active !== false,
     }))
-    .filter((d) => d.name)
+    .filter((d) => d.id > 0 && d.name)
 }
 
 const DEPT_API: Record<Department, string> = DEPT_TO_API
@@ -661,6 +682,11 @@ export async function updateTokenStatusRequest(
   return apiToToken(parseTokenResponse(res))
 }
 
+/** PATCH `/tokens/{id}/status` with `{ status: "cancelled" }`. */
+export function cancelTokenRequest(authToken: string, tokenId: string): Promise<Token> {
+  return updateTokenStatusRequest(authToken, tokenId, { status: 'cancelled' })
+}
+
 /** Parameters accepted by the store action — mapped to snake_case before POST. */
 export interface CheckInInput {
   patientFileNo?: string
@@ -781,6 +807,59 @@ export async function createCheckInRequest(authToken: string, input: CheckInInpu
     body: JSON.stringify(buildCheckInBody(input)),
   })
   return parseCheckInResponse(res)
+}
+
+export function apiToCheckIn(api: ApiCheckInRecord): CheckIn {
+  const methodRaw = String(api.method ?? '').toLowerCase()
+  const method: CheckInMethod = methodRaw === 'scan' ? 'scan' : 'manual'
+  return {
+    id: String(api.id),
+    patientFileNo: api.patient_file_no,
+    arrivalTime: api.arrival_time,
+    department: resolveDept(api.department),
+    visitReason: api.visit_reason ?? '',
+    method,
+    isEmergency: Boolean(api.is_emergency),
+    emergencyReason: api.emergency_reason ?? undefined,
+    receptionStaffId: String(api.reception_staff_id ?? ''),
+  }
+}
+
+export interface PatientCheckInsListResponse {
+  data: CheckIn[]
+  page: number
+  perPage: number
+  lastPage: number
+  total: number
+}
+
+/** GET `/patients/{fileNo}/check-ins?perPage=` — visit / check-in history for a patient. */
+export async function fetchPatientCheckInsRequest(
+  token: string,
+  patientFileNo: string,
+  perPage = 15,
+): Promise<PatientCheckInsListResponse> {
+  const res = await request<unknown>(
+    `/patients/${encodeURIComponent(patientFileNo)}/check-ins?perPage=${perPage}`,
+    token,
+    { method: 'GET' },
+  )
+  if (Array.isArray(res)) {
+    const data = (res as ApiCheckInRecord[]).map(apiToCheckIn)
+    return { data, page: 1, perPage: data.length, lastPage: 1, total: data.length }
+  }
+  if (!res || typeof res !== 'object') {
+    return { data: [], page: 1, perPage, lastPage: 1, total: 0 }
+  }
+  const obj = res as Record<string, unknown>
+  const rows = Array.isArray(obj.data) ? (obj.data as ApiCheckInRecord[]) : []
+  return {
+    data: rows.map(apiToCheckIn),
+    page: Number(obj.page) || 1,
+    perPage: Number(obj.perPage) || perPage,
+    lastPage: Number(obj.lastPage) || 1,
+    total: Number(obj.total) || rows.length,
+  }
 }
 
 const CHECKIN_FIELD_MAP: Record<string, string> = {
@@ -1054,6 +1133,76 @@ export async function coordinateConsultRequestRequest(
     method: 'PATCH',
   })
   return parseConsultResponse(res)
+}
+
+// ——— Notifications ———
+
+export interface ApiNotificationItem {
+  id: number | string
+  user_id: number | string
+  type: string
+  kind?: string | null
+  message: string
+  related_request_id?: number | string | null
+  related_patient_file_no?: string | null
+  timestamp: string
+  is_read: boolean
+}
+
+export interface NotificationsListResponse {
+  data: AppNotification[]
+  page: number
+  perPage: number
+  lastPage: number
+  total: number
+}
+
+function normalizeNotificationType(raw: string): NotificationType {
+  if (raw === 'alert' || raw === 'info' || raw === 'reminder') return raw
+  return 'info'
+}
+
+export function apiToNotification(api: ApiNotificationItem): AppNotification {
+  const relatedFile = api.related_patient_file_no?.trim()
+  const relatedRequest =
+    api.related_request_id != null && String(api.related_request_id).trim() !== ''
+      ? String(api.related_request_id)
+      : undefined
+  return {
+    id: String(api.id),
+    userId: String(api.user_id),
+    type: normalizeNotificationType(String(api.type ?? 'info')),
+    kind: api.kind ? String(api.kind) : undefined,
+    message: String(api.message ?? ''),
+    relatedRequestId: relatedRequest,
+    relatedPatientFileNo: relatedFile || undefined,
+    timestamp: api.timestamp,
+    isRead: Boolean(api.is_read),
+  }
+}
+
+/** GET `/notifications?perPage=` */
+export async function fetchNotificationsRequest(
+  token: string,
+  perPage = 20,
+): Promise<NotificationsListResponse> {
+  const res = await request<unknown>(`/notifications?perPage=${perPage}`, token, { method: 'GET' })
+  if (Array.isArray(res)) {
+    const data = (res as ApiNotificationItem[]).map(apiToNotification)
+    return { data, page: 1, perPage: data.length, lastPage: 1, total: data.length }
+  }
+  if (!res || typeof res !== 'object') {
+    return { data: [], page: 1, perPage, lastPage: 1, total: 0 }
+  }
+  const obj = res as Record<string, unknown>
+  const rows = Array.isArray(obj.data) ? (obj.data as ApiNotificationItem[]) : []
+  return {
+    data: rows.map(apiToNotification),
+    page: Number(obj.page) || 1,
+    perPage: Number(obj.perPage) || perPage,
+    lastPage: Number(obj.lastPage) || 1,
+    total: Number(obj.total) || rows.length,
+  }
 }
 
 /** Maps Laravel-style 422 field keys to local form field names (first message per field). */

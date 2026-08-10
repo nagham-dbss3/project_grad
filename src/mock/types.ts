@@ -192,11 +192,15 @@ export interface Appointment {
 
 export type NotificationType = 'alert' | 'info' | 'reminder'
 
+/** Domain notification — mirrors API `/notifications` fields. */
 export interface AppNotification {
   id: string
   userId: string
   type: NotificationType
+  /** Business kind from API (e.g. lab_result). */
+  kind?: string
   message: string
+  relatedRequestId?: string
   relatedPatientFileNo?: string
   timestamp: string
   isRead: boolean
