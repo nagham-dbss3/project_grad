@@ -55,7 +55,7 @@ export function logFcmArrival(source: 'foreground' | 'background', payload: FcmI
 
 export function fcmToPushFields(
   payload: FcmInbound | MessagePayload,
-): Omit<AppNotification, 'isRead' | 'userId'> & { id?: string } {
+): Omit<AppNotification, 'id' | 'isRead' | 'userId'> & { id?: string } {
   const data = asData(payload.data)
   const title = fcmTitle(payload)
   const body = fcmBody(payload)
