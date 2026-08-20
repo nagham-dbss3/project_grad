@@ -5,7 +5,7 @@ const SW_PATH = '/firebase-messaging-sw.js'
 
 /** Explicit VAPID key for web push (getToken). Env override allowed when set. */
 const DEFAULT_VAPID_KEY =
-  'BH7fLAE3HMS98a-h65e3ETnYm8hGkcyEAU2i05ZJK8jwaj_WOADhjjNsKRA9PlT7rgRzUcs496eflWya-_4z3zY'
+  'BA-lcEPw9AuKHBo5BcTerHLFvMpLeVCIUofEQ0rOg57ND8w2AJK2i1oBwdAMJbyWZ9fyqi0Je5zO_KZNi78A0IQ'
 
 function waitForWorkerActivation(worker: ServiceWorker): Promise<void> {
   if (worker.state === 'activated') return Promise.resolve()

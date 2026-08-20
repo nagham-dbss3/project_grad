@@ -5,6 +5,7 @@ import { useStore } from '@/store/useStore'
 import { LoginScreen } from '@/screens/LoginScreen'
 import { DashboardScreen } from '@/screens/DashboardScreen'
 import { CheckInScreen } from '@/screens/CheckInScreen'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { EmergencyScreen } from '@/screens/EmergencyScreen'
 import { PatientsScreen } from '@/screens/PatientsScreen'
 import { PatientRecordScreen } from '@/screens/PatientRecordScreen'
@@ -16,6 +17,7 @@ import { IdCardScreen } from '@/screens/IdCardScreen'
 import { WaitingScreen } from '@/screens/WaitingScreen'
 import { NotificationsScreen } from '@/screens/NotificationsScreen'
 import { ProfileScreen } from '@/screens/ProfileScreen'
+import { ar } from '@/i18n/ar'
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const staff = useStore((s) => s.staff)
@@ -40,7 +42,14 @@ export function App() {
           }
         >
           <Route path="/" element={<DashboardScreen />} />
-          <Route path="/check-in" element={<CheckInScreen />} />
+          <Route
+            path="/check-in"
+            element={
+              <ErrorBoundary title={ar.checkin.title}>
+                <CheckInScreen />
+              </ErrorBoundary>
+            }
+          />
           <Route path="/emergency" element={<EmergencyScreen />} />
           <Route path="/patients" element={<PatientsScreen />} />
           <Route path="/patients/new" element={<RegisterPatientScreen />} />

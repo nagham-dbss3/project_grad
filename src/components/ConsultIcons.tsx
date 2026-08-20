@@ -26,7 +26,6 @@ export function ConsultIcons({
   size?: 'sm' | 'md'
 }) {
   const pushToast = useStore((s) => s.pushToast)
-  const pushNotification = useStore((s) => s.pushNotification)
   if (!needs.length) return null
 
   const dim = size === 'md' ? 'h-9 w-9' : 'h-7 w-7'
@@ -36,6 +35,7 @@ export function ConsultIcons({
     <div className="inline-flex items-center gap-1">
       {needs.map((n) => {
         const meta = consultMeta[n]
+        if (!meta) return null
         const Icon = meta.icon
         const label = consultLabel[n]
         return (
@@ -46,14 +46,6 @@ export function ConsultIcons({
               onClick={(e) => {
                 e.stopPropagation()
                 e.preventDefault()
-                if (patient) {
-                  pushNotification({
-                    type: 'info',
-                    message: `طلب تنسيق استشارة ${label} — ${patient.firstName} ${patient.familyName}`,
-                    relatedPatientFileNo: patient.fileNoBasma,
-                    timestamp: new Date().toISOString(),
-                  })
-                }
                 pushToast({
                   variant: 'info',
                   title: ar.consult.contact,
@@ -81,6 +73,7 @@ export function ConsultLegend({ types }: { types: ConsultationType[] }) {
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
       {types.map((t) => {
         const meta = consultMeta[t]
+        if (!meta) return null
         const Icon = meta.icon
         return (
           <span key={t} className="inline-flex items-center gap-1.5 text-xs font-bold text-muted-foreground">

@@ -22,11 +22,11 @@ export function patientConsultNeeds(
 /** Pending consult types for `patient_file_no` / `file_no_basma`. */
 export function pendingConsultTypesForFile(
   fileNo: string,
-  requests: ConsultRequest[],
+  requests: ConsultRequest[] | null | undefined,
 ): ConsultationType[] {
-  if (!fileNo?.trim()) return []
+  if (!fileNo?.trim() || !Array.isArray(requests)) return []
   const types = requests
-    .filter((r) => sameFileNo(r.patientFileNo, fileNo) && isPendingStatus(r.status))
+    .filter((r) => r && sameFileNo(r.patientFileNo, fileNo) && isPendingStatus(r.status))
     .map((r) => r.consultationType)
   return [...new Set(types)]
 }

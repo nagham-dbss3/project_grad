@@ -28,6 +28,7 @@ export const ar = {
     confirm: 'تأكيد',
     back: 'رجوع',
     next: 'التالي',
+    prev: 'السابق',
     close: 'إغلاق',
     undo: 'تراجع',
     open: 'فتح',
@@ -159,6 +160,9 @@ export const ar = {
     registerNew: 'تسجيل مريض جديد',
     tokenIssuedToast: 'تم إصدار الرمز وإضافته إلى دور القسم',
     yourToken: 'رمز الانتظار',
+    listTitle: 'تسجيلات الوصول',
+    emptyList: 'لا توجد تسجيلات وصول',
+    page: 'صفحة',
   },
   // emergency
   emergency: {
@@ -273,6 +277,10 @@ export const ar = {
     loadingDoctors: 'جارٍ تحميل الأطباء…',
     noDoctors: 'لا يوجد أطباء لهذا القسم',
     empty: 'لا توجد مواعيد',
+    confirmAppointment: 'تأكيد الموعد',
+    confirmSuccess: 'تم تأكيد الموعد',
+    completeAppointment: 'إكمال الموعد',
+    completeSuccess: 'تم إكمال الموعد',
   },
   // queue actions
   queue: {

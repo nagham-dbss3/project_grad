@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { useStore } from '@/store/useStore'
 import { ar } from '@/i18n/ar'
 import { formatTime, formatDate, cn } from '@/lib/utils'
+import { resolveNotificationApiId } from '@/lib/api'
 import type { AppNotification, NotificationType } from '@/mock/types'
 
 const typeMeta: Record<NotificationType, { icon: typeof Info; tone: string }> = {
@@ -19,7 +20,7 @@ export function NotificationRow({ notification, compact }: { notification: AppNo
   const Icon = meta.icon
 
   const onClick = () => {
-    markRead(notification.id)
+    void markRead(notification.id)
     if (notification.relatedPatientFileNo) {
       navigate(`/patients/${encodeURIComponent(notification.relatedPatientFileNo)}`)
     }
@@ -40,8 +41,8 @@ export function NotificationRow({ notification, compact }: { notification: AppNo
           {notification.relatedPatientFileNo && ` · ${ar.common.fileNo} ${notification.relatedPatientFileNo}`}
         </p>
       </button>
-      {!notification.isRead && !compact && (
-        <Button variant="ghost" size="sm" onClick={() => markRead(notification.id)}>
+      {!notification.isRead && !compact && resolveNotificationApiId(notification.id) && (
+        <Button variant="ghost" size="sm" onClick={() => void markRead(notification.id)}>
           {ar.notif.markRead}
         </Button>
       )}

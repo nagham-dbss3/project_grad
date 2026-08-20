@@ -65,18 +65,56 @@ function resolveRoute(data) {
 }
 
 messaging.onBackgroundMessage((payload) => {
+  console.log('[FCM] إشعار background وصل:', payload)
   const title = (payload.notification && payload.notification.title) || 'بسمة'
   const body = (payload.notification && payload.notification.body) || ''
   const data = payload.data || {}
 
-  return self.registration.showNotification(title, {
-    body,
-    icon: '/favicon.svg',
-    data: {
-      ...data,
-      route: resolveRoute(data),
-    },
+  const notifyClients = clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    for (const client of clientList) {
+      client.postMessage({
+        type: 'FCM_RECEIVED',
+        payload: {
+          notification: payload.notification || { title, body },
+          data,
+        },
+      })
+    }
   })
+
+  return Promise.all([
+    notifyClients,
+    self.registration.showNotification(title, {
+      body,
+      icon: '/favicon.svg',
+      data: {
+        ...data,
+        route: resolveRoute(data),
+      },
+    }),
+  ])
+})
+
+self.addEventListener('push', (event) => {
+  let parsed = {}
+  try {
+    parsed = event.data ? event.data.json() : {}
+  } catch (err) {
+    parsed = {}
+  }
+  console.log('[FCM] حدث push:', parsed)
+  const notification = parsed.notification || {}
+  const data = parsed.data || {}
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        client.postMessage({
+          type: 'FCM_RECEIVED',
+          payload: { notification, data },
+        })
+      }
+    }),
+  )
 })
 
 self.addEventListener('notificationclick', (event) => {

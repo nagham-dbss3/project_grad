@@ -18,6 +18,16 @@ export const DEPT_TO_API: Record<Department, string> = {
 
 export const FALLBACK_DEPARTMENTS: Department[] = ['clinic', 'dayCare', 'inpatient']
 
+/** API slug for POST/GET payloads — prefers GET `/master/departments` `code`. */
+export function apiDepartmentCode(
+  dept: Department,
+  master: Array<{ code: string; active?: boolean }> = [],
+): string {
+  const fromMaster = master.find((d) => d?.code && deptCodeToDepartment(d.code) === dept)
+  if (fromMaster?.code) return fromMaster.code
+  return DEPT_TO_API[dept]
+}
+
 export function deptCodeToDepartment(code?: string | null): Department {
   if (!code) return 'clinic'
   return DEPT_FROM_API[code] ?? (code in DEPT_TO_API ? (code as Department) : 'clinic')
@@ -25,7 +35,7 @@ export function deptCodeToDepartment(code?: string | null): Department {
 
 /** Active departments as UI options (value = internal Department key for filters / queues). */
 export function activeDepartmentOptions(departments: MasterDepartment[]): Option<Department>[] {
-  const active = (Array.isArray(departments) ? departments : []).filter((d) => d.active)
+  const active = (Array.isArray(departments) ? departments : []).filter((d) => Boolean(d && d.active))
   if (active.length === 0) {
     return FALLBACK_DEPARTMENTS.map((value) => ({ value, label: departmentLabel[value] }))
   }
@@ -34,7 +44,7 @@ export function activeDepartmentOptions(departments: MasterDepartment[]): Option
 
 /** Active departments as API `code` options (for registration / payloads). */
 export function activeDepartmentCodeOptions(departments: MasterDepartment[]): Option<string>[] {
-  const active = (Array.isArray(departments) ? departments : []).filter((d) => d.active)
+  const active = (Array.isArray(departments) ? departments : []).filter((d) => Boolean(d && d.active))
   if (active.length === 0) {
     return FALLBACK_DEPARTMENTS.map((value) => ({
       value: DEPT_TO_API[value],
@@ -46,7 +56,7 @@ export function activeDepartmentCodeOptions(departments: MasterDepartment[]): Op
 
 /** Ordered Department keys for queue / waiting lanes (from API when available). */
 export function activeDepartmentKeys(departments: MasterDepartment[]): Department[] {
-  const active = (Array.isArray(departments) ? departments : []).filter((d) => d.active)
+  const active = (Array.isArray(departments) ? departments : []).filter((d) => Boolean(d && d.active))
   if (active.length === 0) return [...FALLBACK_DEPARTMENTS]
   const keys = active.map((d) => deptCodeToDepartment(d.code))
   return [...new Set(keys)]
@@ -76,10 +86,13 @@ export function departmentLabelFromMaster(
   const apiCode = DEPT_TO_API[asDept]
   const match = (Array.isArray(departments) ? departments : []).find(
     (d) =>
-      d.code === dept
-      || d.code === apiCode
-      || deptCodeToDepartment(d.code) === asDept
-      || String(d.id) === String(dept),
+      Boolean(d)
+      && (
+        d.code === dept
+        || d.code === apiCode
+        || deptCodeToDepartment(d.code) === asDept
+        || String(d.id) === String(dept)
+      ),
   )
   return match?.name ?? departmentLabel[asDept] ?? String(dept)
 }

@@ -27,7 +27,7 @@ export function NotificationsScreen() {
         description={unreadCount ? `${unreadCount} ${ar.notif.unread}` : undefined}
         action={
           unreadCount ? (
-            <Button variant="outline" onClick={markAll}>
+            <Button variant="outline" onClick={() => void markAll()}>
               <CheckCheck className="h-4 w-4" />
               {ar.notif.markAll}
             </Button>
@@ -36,9 +36,9 @@ export function NotificationsScreen() {
       />
       <Card>
         <CardContent className="p-4">
-          {loading ? (
+          {loading && notifications.length === 0 ? (
             <ListSkeleton rows={5} />
-          ) : error ? (
+          ) : error && notifications.length === 0 ? (
             <ErrorState onRetry={() => void fetchNotifications()} />
           ) : notifications.length ? (
             <div className="divide-y">

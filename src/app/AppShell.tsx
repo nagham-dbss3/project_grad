@@ -96,11 +96,7 @@ export function AppShell() {
             </Button>
             <NavLink to="/notifications" className="relative p-2 text-muted-foreground hover:text-foreground" aria-label={ar.nav.notifications}>
               <Bell className="h-5 w-5" />
-              {unread > 0 && (
-                <span className="absolute top-1 end-1 min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
-                  {unread}
-                </span>
-              )}
+              <UnreadBadge count={unread} />
             </NavLink>
             <NavLink to="/profile" aria-label={ar.nav.profile}>
               <Avatar name={staff ? `${staff.firstName} ${staff.lastName}` : 'م ع'} className="h-9 w-9" />
@@ -113,7 +109,7 @@ export function AppShell() {
         {/* Sidebar (desktop) */}
         <aside className="hidden lg:flex flex-col w-60 shrink-0 border-e p-3 gap-1 sticky top-14 h-[calc(100vh-3.5rem)] no-print">
           {navItems.map((item) => (
-            <SideLink key={item.to} item={item} />
+            <SideLink key={item.to} item={item} unread={item.to === '/notifications' ? unread : 0} />
           ))}
           <div className="mt-auto rounded-xl bg-primary-soft p-3 text-xs text-primary">
             <p className="font-bold mb-1">مكتب الاستقبال</p>
@@ -127,7 +123,7 @@ export function AppShell() {
             <div className="absolute inset-0 bg-foreground/40" />
             <nav className="absolute top-0 bottom-0 start-0 w-64 bg-card p-3 shadow-card animate-fade-in" onClick={(e) => e.stopPropagation()}>
               {navItems.map((item) => (
-                <SideLink key={item.to} item={item} onClick={() => setMobileNavOpen(false)} />
+                <SideLink key={item.to} item={item} unread={item.to === '/notifications' ? unread : 0} onClick={() => setMobileNavOpen(false)} />
               ))}
             </nav>
           </div>
@@ -153,7 +149,10 @@ export function AppShell() {
               )
             }
           >
-            <item.icon className="h-5 w-5" />
+            <span className="relative">
+              <item.icon className="h-5 w-5" />
+              {item.to === '/notifications' && <UnreadBadge count={unread} compact />}
+            </span>
             {item.label}
           </NavLink>
         ))}
@@ -164,7 +163,23 @@ export function AppShell() {
   )
 }
 
-function SideLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
+function UnreadBadge({ count, compact }: { count: number; compact?: boolean }) {
+  if (count <= 0) return null
+  return (
+    <span
+      className={cn(
+        'absolute rounded-full bg-destructive text-destructive-foreground font-bold flex items-center justify-center',
+        compact
+          ? '-top-1 -end-1 min-w-[14px] h-[14px] px-0.5 text-[9px]'
+          : 'top-1 end-1 min-w-[18px] h-[18px] px-1 text-[10px]',
+      )}
+    >
+      {count > 99 ? '99+' : count}
+    </span>
+  )
+}
+
+function SideLink({ item, onClick, unread = 0 }: { item: NavItem; onClick?: () => void; unread?: number }) {
   return (
     <NavLink
       to={item.to}
@@ -172,13 +187,18 @@ function SideLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
       onClick={onClick}
       className={({ isActive }) =>
         cn(
-          'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors',
+          'relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-bold transition-colors',
           isActive ? 'bg-primary text-primary-foreground shadow-soft' : 'text-foreground hover:bg-muted',
         )
       }
     >
       <item.icon className="h-5 w-5" />
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {unread > 0 && (
+        <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center">
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
     </NavLink>
   )
 }

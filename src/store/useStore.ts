@@ -13,6 +13,7 @@ import { genId } from '@/lib/utils'
 import { clearAuthSession, saveAuthSession } from '@/lib/authStorage'
 import { emptyQueues, enrichAllQueues, filterActiveQueues, mergePatients } from '@/lib/selectors'
 import { hasActiveCheckInToday } from '@/lib/patientVisit'
+import { apiDepartmentCode } from '@/lib/masterData'
 import { ar } from '@/i18n/ar'
 import type { QueueRow } from '@/lib/selectors'
 import {
@@ -33,10 +34,17 @@ import {
   mapCheckInResponse,
   mapCheckInFieldErrors,
   fetchPatientCheckInsRequest,
+  fetchCheckInsRequest,
   fetchAppointmentsRequest,
   fetchNotificationsRequest,
+  markNotificationReadRequest,
+  markAllNotificationsReadRequest,
   cancelAppointmentRequest,
+  confirmAppointmentRequest,
+  completeAppointmentRequest,
   createAppointmentRequest,
+  uniqueLatestCheckInsByPatient,
+  resolveNotificationApiId,
   apiToAppointment,
   fetchPendingConsultRequests as fetchPendingConsultRequestsRequest,
   createConsultRequestRequest,
@@ -89,6 +97,13 @@ interface StoreState {
   displayQueuesLoading: boolean
   displayQueuesError: boolean
   checkIns: CheckIn[]
+  /** Paginated GET `/check-ins` */
+  checkInList: CheckIn[]
+  checkInListPage: number
+  checkInListLastPage: number
+  checkInListTotal: number
+  checkInListLoading: boolean
+  checkInListError: boolean
   /** Per-patient visit history from GET /patients/{fileNo}/check-ins */
   patientCheckIns: CheckIn[]
   patientCheckInsLoading: boolean
@@ -126,6 +141,7 @@ interface StoreState {
   fetchQueues: () => Promise<void>
   fetchDisplayQueues: () => Promise<void>
   fetchPatientCheckIns: (fileNo: string, perPage?: number) => Promise<CheckIn[]>
+  fetchCheckIns: (page?: number, perPage?: number) => Promise<CheckIn[]>
 
   // check-in / tokens
   issueToken: (input: CheckInInput) => Promise<CheckInResult>
@@ -138,6 +154,8 @@ interface StoreState {
   fetchAppointments: (date: string) => Promise<Appointment[]>
   createAppointment: (input: CreateAppointmentInput) => Promise<Appointment | null>
   cancelAppointment: (id: string) => Promise<Appointment | null>
+  confirmAppointment: (id: string) => Promise<Appointment | null>
+  completeAppointment: (id: string) => Promise<Appointment | null>
 
   // consult requests
   fetchPendingConsultRequests: () => Promise<ConsultRequest[]>
@@ -146,9 +164,9 @@ interface StoreState {
 
   // notifications
   fetchNotifications: (perPage?: number) => Promise<AppNotification[]>
-  markNotificationRead: (id: string) => void
-  markAllNotificationsRead: () => void
-  pushNotification: (n: Omit<AppNotification, 'id' | 'isRead' | 'userId'>) => void
+  markNotificationRead: (id: string) => Promise<void>
+  markAllNotificationsRead: () => Promise<void>
+  pushNotification: (n: Omit<AppNotification, 'id' | 'isRead' | 'userId'> & { id?: string }) => void
 
   // toasts
   pushToast: (t: Omit<ToastMessage, 'id'>) => void
@@ -163,6 +181,9 @@ const toStaff = (user: ApiUser): ReceptionStaff => ({
 })
 
 const ALL_DEPTS: Department[] = ['clinic', 'dayCare', 'inpatient']
+
+let checkInsInflight: Promise<CheckIn[]> | null = null
+let checkInsInflightKey = ''
 
 function checkInActionError(err: ApiError): string {
   if (err.status === 401) return 'انتهت الجلسة. يرجى تسجيل الدخول مجدداً.'
@@ -188,13 +209,30 @@ function removeTokenFromQueues(queues: Record<Department, QueueRow[]>, tokenId: 
   return { clinic: drop(queues.clinic), dayCare: drop(queues.dayCare), inpatient: drop(queues.inpatient) }
 }
 
+function dropCheckInsForVisit(rows: CheckIn[] | undefined, token: Token): CheckIn[] {
+  const fileNo = String(token.patientFileNo ?? '').trim()
+  return (rows ?? []).filter((c) => {
+    if (!c) return false
+    if (String(c.id) === String(token.id)) return false
+    if (fileNo && String(c.patientFileNo ?? '').trim() === fileNo) return false
+    return true
+  })
+}
+
 function applyTokenUpdate(tokenId: string, token: Token) {
   if (token.status === 'served' || token.status === 'cancelled') {
-    return (s: StoreState) => ({
-      tokens: s.tokens.map((t) => (t.id === tokenId ? token : t)),
-      queues: removeTokenFromQueues(s.queues, tokenId),
-      displayQueues: removeTokenFromQueues(s.displayQueues, tokenId),
-    })
+    return (s: StoreState) => {
+      const checkIns = dropCheckInsForVisit(s.checkIns, token)
+      const checkInList = dropCheckInsForVisit(s.checkInList, token)
+      return {
+        tokens: s.tokens.map((t) => (t.id === tokenId ? token : t)),
+        queues: removeTokenFromQueues(s.queues, tokenId),
+        displayQueues: removeTokenFromQueues(s.displayQueues, tokenId),
+        checkIns,
+        checkInList,
+        checkInListTotal: checkInList.length,
+      }
+    }
   }
   return (s: StoreState) => ({
     tokens: s.tokens.map((t) => (t.id === tokenId ? token : t)),
@@ -240,6 +278,12 @@ export const useStore = create<StoreState>((set, get) => ({
   displayQueuesLoading: false,
   displayQueuesError: false,
   checkIns: [],
+  checkInList: [],
+  checkInListPage: 1,
+  checkInListLastPage: 1,
+  checkInListTotal: 0,
+  checkInListLoading: false,
+  checkInListError: false,
   patientCheckIns: [],
   patientCheckInsLoading: false,
   patientCheckInsError: false,
@@ -292,6 +336,12 @@ export const useStore = create<StoreState>((set, get) => ({
       displayQueuesLoading: false,
       displayQueuesError: false,
       checkIns: [],
+      checkInList: [],
+      checkInListPage: 1,
+      checkInListLastPage: 1,
+      checkInListTotal: 0,
+      checkInListLoading: false,
+      checkInListError: false,
       patientCheckIns: [],
       patientCheckInsLoading: false,
       patientCheckInsError: false,
@@ -441,7 +491,9 @@ export const useStore = create<StoreState>((set, get) => ({
     if (!token) return
     set({ queuesLoading: true, queuesError: false })
     try {
-      const results = await Promise.all(ALL_DEPTS.map((d) => fetchQueuesRequest(token, d)))
+      const results = await Promise.all(
+        ALL_DEPTS.map((d) => fetchQueuesRequest(token, d, apiDepartmentCode(d, get().departments))),
+      )
       const rawQueues = { clinic: results[0], dayCare: results[1], inpatient: results[2] }
       const rows = Object.values(rawQueues).flat()
       const fromRows = rows.map((r) => r.patient).filter((p): p is Patient => Boolean(p))
@@ -481,26 +533,32 @@ export const useStore = create<StoreState>((set, get) => ({
       }
     }
     try {
-      const api = await createCheckInRequest(authToken, input)
+      const api = await createCheckInRequest(authToken, {
+        ...input,
+        departmentApiCode: apiDepartmentCode(input.department, get().departments),
+      })
       const { token, checkIn, patient, row } = mapCheckInResponse(api, input.department)
       set((s) => {
         const dept = token.department
         const hasPatient = s.patients.some((p) => p.fileNoBasma === patient.fileNoBasma)
         const isSelected = s.selectedPatient?.fileNoBasma === patient.fileNoBasma
+        const lane = s.queues[dept] ?? []
+        const displayLane = s.displayQueues[dept] ?? []
         return {
           patients: hasPatient
             ? s.patients.map((p) => (p.fileNoBasma === patient.fileNoBasma ? patient : p))
             : [patient, ...s.patients],
           tokens: [...s.tokens, token],
-          checkIns: [...s.checkIns, checkIn],
-          queues: { ...s.queues, [dept]: [...s.queues[dept], row] },
-          displayQueues: { ...s.displayQueues, [dept]: [...s.displayQueues[dept], row] },
+          checkIns: uniqueLatestCheckInsByPatient([...(s.checkIns ?? []), checkIn]),
+          queues: { ...s.queues, [dept]: [...lane, row] },
+          displayQueues: { ...s.displayQueues, [dept]: [...displayLane, row] },
           selectedPatient: isSelected ? patient : s.selectedPatient,
           selectedPatientRaw: isSelected ? api.patient : s.selectedPatientRaw,
         }
       })
       void get().fetchQueues()
       void get().fetchDisplayQueues()
+      void get().fetchCheckIns(1)
       return { ok: true, token, checkIn, patient }
     } catch (err) {
       if (err instanceof ApiError) {
@@ -576,6 +634,56 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
+  fetchCheckIns: async (page = 1, perPage = 15) => {
+    const authToken = get().token
+    if (!authToken) return []
+    const key = `${page}:${perPage}`
+    const existing = checkInsInflight
+    if (existing && checkInsInflightKey === key) return existing
+
+    set({ checkInListLoading: true, checkInListError: false })
+    checkInsInflightKey = key
+    const run = (async () => {
+      try {
+        const res = await fetchCheckInsRequest(authToken, perPage, page)
+        const unique = uniqueLatestCheckInsByPatient(res.data)
+        set((s) => {
+          const byId = new Map(
+            (s.checkIns ?? []).filter((c) => c?.id != null).map((c) => [c.id, c]),
+          )
+          for (const c of unique) byId.set(c.id, c)
+          return {
+            checkInList: unique,
+            checkInListPage: res.page,
+            checkInListLastPage: res.lastPage,
+            checkInListTotal: unique.length,
+            checkInListLoading: false,
+            checkInListError: false,
+            checkIns: uniqueLatestCheckInsByPatient([...byId.values()]),
+          }
+        })
+        return unique
+      } catch (err) {
+        set({ checkInListLoading: false, checkInListError: true })
+        get().pushToast({
+          variant: 'error',
+          title: ar.checkin.listTitle,
+          description: err instanceof ApiError
+            ? (err.message === 'network' ? 'تعذّر الاتصال بالخادم.' : err.message)
+            : ar.common.retry,
+        })
+        return []
+      } finally {
+        if (checkInsInflightKey === key) {
+          checkInsInflight = null
+          checkInsInflightKey = ''
+        }
+      }
+    })()
+    checkInsInflight = run
+    return run
+  },
+
   fetchPatientCheckIns: async (fileNo, perPage = 15) => {
     const authToken = get().token
     if (!authToken || !fileNo) return []
@@ -629,6 +737,48 @@ export const useStore = create<StoreState>((set, get) => ({
         get().pushToast({ variant: 'error', title: ar.appt.new, description: message })
       } else {
         get().pushToast({ variant: 'error', title: ar.appt.new, description: ar.common.retry })
+      }
+      return null
+    }
+  },
+
+  confirmAppointment: async (id) => {
+    const authToken = get().token
+    if (!authToken) return null
+    try {
+      const api = await confirmAppointmentRequest(authToken, id)
+      const updated = apiToAppointment(api)
+      set((s) => ({
+        appointments: s.appointments.map((a) => (a.id === id ? updated : a)),
+      }))
+      return updated
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const message = err.message !== 'network' ? err.message : ar.common.retry
+        get().pushToast({ variant: 'error', title: ar.appt.confirmAppointment, description: message })
+      } else {
+        get().pushToast({ variant: 'error', title: ar.appt.confirmAppointment, description: ar.common.retry })
+      }
+      return null
+    }
+  },
+
+  completeAppointment: async (id) => {
+    const authToken = get().token
+    if (!authToken) return null
+    try {
+      const api = await completeAppointmentRequest(authToken, id)
+      const updated = apiToAppointment(api)
+      set((s) => ({
+        appointments: s.appointments.map((a) => (a.id === id ? updated : a)),
+      }))
+      return updated
+    } catch (err) {
+      if (err instanceof ApiError) {
+        const message = err.message !== 'network' ? err.message : ar.common.retry
+        get().pushToast({ variant: 'error', title: ar.appt.completeAppointment, description: message })
+      } else {
+        get().pushToast({ variant: 'error', title: ar.appt.completeAppointment, description: ar.common.retry })
       }
       return null
     }
@@ -729,20 +879,62 @@ export const useStore = create<StoreState>((set, get) => ({
     }
   },
 
-  markNotificationRead: (id) =>
+  markNotificationRead: async (id) => {
+    const authToken = get().token
+    const current = get().notifications.find((n) => n.id === id)
+    if (!current || current.isRead) return
+
+    const apiId = resolveNotificationApiId(id)
+    const snapshot = get().notifications
     set((s) => {
       const notifications = s.notifications.map((n) => (n.id === id ? { ...n, isRead: true } : n))
       return { notifications, unreadCount: countUnread(notifications) }
-    }),
-  markAllNotificationsRead: () =>
+    })
+    if (!authToken || !apiId) return
+    try {
+      await markNotificationReadRequest(authToken, apiId)
+    } catch (err) {
+      set({ notifications: snapshot, unreadCount: countUnread(snapshot) })
+      get().pushToast({
+        variant: 'error',
+        title: ar.notif.markRead,
+        description: err instanceof ApiError && err.message !== 'network' ? err.message : ar.common.retry,
+      })
+    }
+  },
+  markAllNotificationsRead: async () => {
+    const authToken = get().token
+    if (!get().unreadCount) return
+
+    const snapshot = get().notifications
     set((s) => {
       const notifications = s.notifications.map((n) => ({ ...n, isRead: true }))
       return { notifications, unreadCount: 0 }
-    }),
+    })
+    if (!authToken) return
+    try {
+      await markAllNotificationsReadRequest(authToken)
+    } catch (err) {
+      set({ notifications: snapshot, unreadCount: countUnread(snapshot) })
+      get().pushToast({
+        variant: 'error',
+        title: ar.notif.markAll,
+        description: err instanceof ApiError && err.message !== 'network' ? err.message : ar.common.retry,
+      })
+    }
+  },
   pushNotification: (n) =>
     set((s) => {
+      const incomingId = String(n.id ?? '').trim()
+      const id = incomingId && incomingId !== 'undefined' && incomingId !== 'null'
+        ? incomingId
+        : genId('fcm')
+      if (s.notifications.some((x) => x.id === id || x.message === n.message)) {
+        return s
+      }
+      const { id: _omit, ...rest } = n
       const notifications: AppNotification[] = [
-        { ...n, id: genId('nt'), isRead: false, userId: get().staff?.id ?? '' },
+        { ...rest, id, isRead: false, userId: get().staff?.id ?? '' },
         ...s.notifications,
       ]
       return { notifications, unreadCount: countUnread(notifications) }
@@ -751,11 +943,19 @@ export const useStore = create<StoreState>((set, get) => ({
   fetchNotifications: async (perPage = 20) => {
     const authToken = get().token
     if (!authToken) return []
-    set({ notificationsLoading: true, notificationsError: false })
+    const hadItems = get().notifications.length > 0
+    set({ notificationsLoading: !hadItems, notificationsError: false })
     try {
       console.log('[Notifications] جلب الإشعارات من GET /notifications?perPage=', perPage)
       const res = await fetchNotificationsRequest(authToken, perPage)
-      const notifications = res.data
+      const server = res.data
+      const localOnly = get().notifications.filter(
+        (n) =>
+          (n.id.startsWith('fcm_') || n.id.startsWith('nt_'))
+          && !n.isRead
+          && !server.some((s) => s.id === n.id || s.message === n.message),
+      )
+      const notifications = [...localOnly, ...server]
       const unread = countUnread(notifications)
       console.log('[Notifications] الاستجابة:', {
         total: res.total,

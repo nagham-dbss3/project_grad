@@ -30,7 +30,6 @@ export function AppointmentsScreen() {
   const doctors = useStore((s) => s.doctors)
   const fetchDoctors = useStore((s) => s.fetchDoctors)
   const createAppointment = useStore((s) => s.createAppointment)
-  const pushNotification = useStore((s) => s.pushNotification)
   const pushToast = useStore((s) => s.pushToast)
   const { departmentOptions } = useMasterData()
   const appointmentsLoading = useStore((s) => s.appointmentsLoading)
@@ -157,12 +156,6 @@ export function AppointmentsScreen() {
     if (date !== listDate) {
       setSlotAppointments((prev) => [...prev, appt])
     }
-    pushNotification({
-      type: 'reminder',
-      message: `تم تأكيد موعد ${patient.firstName} ${patient.familyName} بتاريخ ${date} ${time}`,
-      relatedPatientFileNo: patient.fileNoBasma,
-      timestamp: new Date().toISOString(),
-    })
     pushToast({ variant: 'success', title: ar.appt.confirmed })
     setDoctorId('')
     setTime('')
@@ -173,6 +166,12 @@ export function AppointmentsScreen() {
     const remove = (prev: Appointment[]) => prev.filter((a) => a.id !== updated.id)
     setListAppointments(remove)
     setSlotAppointments(remove)
+  }
+
+  const handleConfirmed = (updated: Appointment) => {
+    const replace = (prev: Appointment[]) => prev.map((a) => (a.id === updated.id ? updated : a))
+    setListAppointments(replace)
+    setSlotAppointments(replace)
   }
 
   const listTitle =
@@ -298,7 +297,7 @@ export function AppointmentsScreen() {
             ) : sortedList.length ? (
               <div className="space-y-2">
                 {sortedList.map((a) => (
-                  <AppointmentRow key={a.id} appointment={a} showCancel onCancelled={handleCancelled} />
+                  <AppointmentRow key={a.id} appointment={a} showCancel onCancelled={handleCancelled} onConfirmed={handleConfirmed} onCompleted={handleConfirmed} />
                 ))}
               </div>
             ) : (

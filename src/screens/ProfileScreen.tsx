@@ -7,6 +7,7 @@ import { Avatar } from '@/components/ui/misc'
 import { PageHeader } from '@/components/PageHeader'
 import { useStore } from '@/store/useStore'
 import { fetchMe, logoutRequest, ApiError } from '@/lib/api'
+import { unregisterFcmTokenFromBackend } from '@/lib/fcmTokenService'
 import { ar } from '@/i18n/ar'
 
 export function ProfileScreen() {
@@ -37,7 +38,10 @@ export function ProfileScreen() {
 
   const handleLogout = async () => {
     try {
-      if (token) await logoutRequest(token)
+      if (token) {
+        await unregisterFcmTokenFromBackend(token)
+        await logoutRequest(token)
+      }
     } catch {
       pushToast({ variant: 'error', title: ar.common.logout, description: ar.profile.logoutError })
     } finally {

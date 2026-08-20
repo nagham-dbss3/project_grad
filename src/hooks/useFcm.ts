@@ -1,14 +1,9 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '@/store/useStore'
 import { syncFcmTokenWithBackend } from '@/lib/fcmTokenService'
 import { subscribeToForegroundMessages, type MessagePayload } from '@/lib/fcm'
-import { resolveFcmRoute, type FcmMessageData } from '@/lib/fcmNavigation'
-import { ar } from '@/i18n/ar'
-
-function payloadData(payload: MessagePayload): FcmMessageData {
-  return (payload.data ?? {}) as FcmMessageData
-}
+import { fcmBody, fcmTitle, fcmToPushFields, logFcmArrival, type FcmInbound } from '@/lib/fcmIngest'
 
 /**
  * After authentication: sync FCM token with Backend, listen for foreground messages,
@@ -16,10 +11,30 @@ function payloadData(payload: MessagePayload): FcmMessageData {
  */
 export function useFcm(): void {
   const authToken = useStore((s) => s.token)
-  const pushToast = useStore((s) => s.pushToast)
   const fetchNotifications = useStore((s) => s.fetchNotifications)
+  const pushNotification = useStore((s) => s.pushNotification)
   const navigate = useNavigate()
   const syncedForToken = useRef<string | null>(null)
+  const lastFcmKey = useRef('')
+  const lastFcmAt = useRef(0)
+
+  const applyIncomingFcm = useCallback((source: 'foreground' | 'background', payload: MessagePayload | FcmInbound) => {
+    logFcmArrival(source, payload)
+    const title = fcmTitle(payload)
+    const description = fcmBody(payload)
+    const dedupeKey = `${title}|${description ?? ''}`
+    const now = Date.now()
+    if (dedupeKey === lastFcmKey.current && now - lastFcmAt.current < 2500) {
+      console.log('[FCM] تجاهل تكرار نفس الإشعار')
+      return
+    }
+    lastFcmKey.current = dedupeKey
+    lastFcmAt.current = now
+    pushNotification(fcmToPushFields(payload))
+    window.setTimeout(() => {
+      void fetchNotifications()
+    }, 800)
+  }, [fetchNotifications, pushNotification])
 
   useEffect(() => {
     if (!authToken) {
@@ -46,19 +61,7 @@ export function useFcm(): void {
       if (cancelled) return
 
       unsubscribe = await subscribeToForegroundMessages((payload) => {
-        console.log('[FCM] إشعار foreground وصل:', payload)
-        const data = payloadData(payload)
-        const title = payload.notification?.title?.trim() || ar.notif.pushTitle
-        const description = payload.notification?.body?.trim() || undefined
-        const route = resolveFcmRoute(data) ?? undefined
-
-        pushToast({
-          variant: 'info',
-          title,
-          description,
-          route,
-        })
-        void fetchNotifications()
+        applyIncomingFcm('foreground', payload)
       })
     }
 
@@ -68,19 +71,29 @@ export function useFcm(): void {
       cancelled = true
       unsubscribe?.()
     }
-  }, [authToken, pushToast, fetchNotifications])
+  }, [authToken, applyIncomingFcm])
 
-  // Background / SW: navigate when user clicks a system notification
+  // Background / SW: ingest push + navigate when user clicks a system notification
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
 
     const onMessage = (event: MessageEvent) => {
-      const data = event.data as { type?: string; route?: string } | null
-      if (!data || data.type !== 'FCM_NAVIGATE' || !data.route) return
-      navigate(data.route)
+      const data = event.data as {
+        type?: string
+        route?: string
+        payload?: FcmInbound
+      } | null
+      if (!data?.type) return
+      if (data.type === 'FCM_RECEIVED' && data.payload) {
+        applyIncomingFcm('background', data.payload)
+        return
+      }
+      if (data.type === 'FCM_NAVIGATE' && data.route) {
+        navigate(data.route)
+      }
     }
 
     navigator.serviceWorker.addEventListener('message', onMessage)
     return () => navigator.serviceWorker.removeEventListener('message', onMessage)
-  }, [navigate])
+  }, [navigate, applyIncomingFcm])
 }

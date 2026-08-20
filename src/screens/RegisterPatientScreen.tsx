@@ -309,7 +309,6 @@ export function RegisterPatientScreen() {
   const addPatient = useStore((s) => s.addPatient)
   const updatePatient = useStore((s) => s.updatePatient)
   const pushToast = useStore((s) => s.pushToast)
-  const pushNotification = useStore((s) => s.pushNotification)
   const { departmentCodeOptions, referralSelectOptions, referralOptions, masterDataLoading, masterDataError, reloadMasterData } = useMasterData()
   const returnTo = params.get('return')
   const editFileNo = params.get('edit')
@@ -411,12 +410,6 @@ export function RegisterPatientScreen() {
         const created = await createPatient(token, payload)
         const patient = apiToPatient(created)
         addPatient(patient)
-        pushNotification({
-          type: 'info',
-          message: `تم تسجيل مريض جديد — ${patient.firstName} ${patient.familyName}`,
-          relatedPatientFileNo: patient.fileNoBasma,
-          timestamp: new Date().toISOString(),
-        })
         pushToast({ variant: 'success', title: ar.common.saved, description: ar.register.savedToast })
         if (returnTo === 'check-in') navigate(`/check-in?fileNo=${encodeURIComponent(patient.fileNoBasma)}`)
         else navigate(`/patients/${patient.fileNoBasma}`)

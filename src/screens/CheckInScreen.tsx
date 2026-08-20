@@ -16,6 +16,10 @@ import { PageHeader } from '@/components/PageHeader'
 
 import { ScanPad } from '@/components/ScanPad'
 
+import { CheckInsListCard } from '@/components/CheckInsListCard'
+
+import { ErrorBoundary } from '@/components/ErrorBoundary'
+
 import { ConsultIcons } from '@/components/ConsultIcons'
 
 import { Stepper } from '@/components/Stepper'
@@ -61,8 +65,6 @@ export function CheckInScreen() {
   const issueToken = useStore((s) => s.issueToken)
 
   const pushToast = useStore((s) => s.pushToast)
-
-  const pushNotification = useStore((s) => s.pushNotification)
 
   const consultRequests = useStore((s) => s.consultRequests)
 
@@ -223,7 +225,7 @@ export function CheckInScreen() {
 
       department,
 
-      visitReason: reason || 'زيارة',
+      visitReason: reason.trim() || 'متابعة',
 
       method,
 
@@ -246,18 +248,6 @@ export function CheckInScreen() {
     }
 
     setFieldErrors({})
-
-    pushNotification({
-
-      type: 'info',
-
-      message: `تم تسجيل وصول ${result.patient.firstName} ${result.patient.familyName} — رمز ${result.token.number}`,
-
-      relatedPatientFileNo: fileNo,
-
-      timestamp: new Date().toISOString(),
-
-    })
 
     pushToast({ variant: 'success', title: ar.checkin.issued, description: ar.checkin.tokenIssuedToast })
 
@@ -285,6 +275,8 @@ export function CheckInScreen() {
 
           {step === 'scan' && (
 
+            <ErrorBoundary title={ar.checkin.step1}>
+
             <ScanPad
 
               startManual={params.get('manual') === '1'}
@@ -294,6 +286,8 @@ export function CheckInScreen() {
               onUnknown={rejectUnknown}
 
             />
+
+            </ErrorBoundary>
 
           )}
 
@@ -329,7 +323,7 @@ export function CheckInScreen() {
 
                     <p className="font-bold text-lg">{patient.firstName} {patient.familyName}</p>
 
-                    <ConsultIcons needs={patientConsultNeeds(patient, consultRequests)} patient={patient} />
+                    <ConsultIcons needs={patientConsultNeeds(patient, consultRequests ?? [])} patient={patient} />
 
                   </div>
 
@@ -482,6 +476,10 @@ export function CheckInScreen() {
         </CardContent>
 
       </Card>
+
+      <ErrorBoundary title={ar.checkin.listTitle}>
+        <CheckInsListCard />
+      </ErrorBoundary>
 
     </div>
 

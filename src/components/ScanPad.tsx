@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ScanLine, Loader2, Search, Camera, Keyboard } from 'lucide-react'
-import { Html5Qrcode } from 'html5-qrcode'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Field } from '@/components/ui/misc'
@@ -34,7 +33,7 @@ export function ScanPad({
   const lookingUpRef = useRef(false)
   const bufferRef = useRef('')
   const lastKeyAtRef = useRef(0)
-  const scannerRef = useRef<Html5Qrcode | null>(null)
+  const scannerRef = useRef<{ isScanning?: boolean; stop: () => Promise<void> } | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   const lookupFile = useCallback(async (fileNo: string): Promise<boolean> => {
@@ -105,16 +104,23 @@ export function ScanPad({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [mode, resolveFile])
 
-  // Webcam QR via html5-qrcode
+  // Webcam QR via html5-qrcode (loaded only when the camera is opened)
   useEffect(() => {
     if (mode !== 'camera') return
 
     let cancelled = false
-    const scanner = new Html5Qrcode(CAMERA_REGION_ID)
-    scannerRef.current = scanner
 
     const start = async () => {
       try {
+        const el = document.getElementById(CAMERA_REGION_ID)
+        if (!el) {
+          setMode('manual')
+          return
+        }
+        const { Html5Qrcode } = await import('html5-qrcode')
+        if (cancelled) return
+        const scanner = new Html5Qrcode(CAMERA_REGION_ID)
+        scannerRef.current = scanner
         await scanner.start(
           { facingMode: 'environment' },
           { fps: 10, qrbox: { width: 220, height: 220 } },
@@ -134,7 +140,8 @@ export function ScanPad({
           },
           () => undefined,
         )
-      } catch {
+      } catch (err) {
+        console.warn('[ScanPad] تعذّر تهيئة الكاميرا', err)
         if (!cancelled) {
           pushToast({
             variant: 'warning',

@@ -1,10 +1,24 @@
-﻿import { ApiError, registerFcmTokenRequest } from '@/lib/api'
+﻿import { ApiError, deleteFcmTokenRequest, registerFcmTokenRequest } from '@/lib/api'
 import { getFcmToken } from '@/lib/fcm'
+
+const FCM_DEVICE_TOKEN_KEY = 'basma_fcm_device_token'
 
 export type FcmSyncResult = {
   fcmToken: string | null
   /** true when Backend accepted the token */
   registered: boolean
+}
+
+function saveFcmDeviceToken(token: string): void {
+  localStorage.setItem(FCM_DEVICE_TOKEN_KEY, token)
+}
+
+function loadFcmDeviceToken(): string | null {
+  return localStorage.getItem(FCM_DEVICE_TOKEN_KEY)
+}
+
+function clearFcmDeviceToken(): void {
+  localStorage.removeItem(FCM_DEVICE_TOKEN_KEY)
 }
 
 /**
@@ -18,6 +32,8 @@ export async function syncFcmTokenWithBackend(authToken: string): Promise<FcmSyn
     console.warn('[FCM] لا يوجد توكن جهاز — تخطّي التسجيل في الـ API')
     return { fcmToken: null, registered: false }
   }
+
+  saveFcmDeviceToken(fcmToken)
 
   try {
     const res = await registerFcmTokenRequest(authToken, fcmToken)
@@ -33,5 +49,25 @@ export async function syncFcmTokenWithBackend(authToken: string): Promise<FcmSyn
     }
     console.error('[FCM] فشل POST /device-tokens:', err)
     throw err
+  }
+}
+
+/**
+ * Unregister this browser's FCM token on logout / unsubscribe.
+ * Backend: DELETE /device-tokens `{ token }`.
+ */
+export async function unregisterFcmTokenFromBackend(authToken: string): Promise<void> {
+  const fcmToken = loadFcmDeviceToken() ?? (await getFcmToken())
+  if (!fcmToken) {
+    clearFcmDeviceToken()
+    return
+  }
+  try {
+    const res = await deleteFcmTokenRequest(authToken, fcmToken)
+    console.log('[FCM] حُذف توكن الجهاز من /device-tokens:', res)
+  } catch (err) {
+    console.warn('[FCM] فشل DELETE /device-tokens:', err)
+  } finally {
+    clearFcmDeviceToken()
   }
 }

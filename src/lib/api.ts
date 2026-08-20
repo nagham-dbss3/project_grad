@@ -20,7 +20,7 @@ import type {
 } from '@/mock/types'
 import type { QueueRow } from '@/lib/selectors'
 import { genId } from '@/lib/utils'
-import { DEPT_FROM_API, DEPT_TO_API, deptCodeToDepartment } from '@/lib/masterData'
+import { apiDepartmentCode, DEPT_FROM_API, DEPT_TO_API, deptCodeToDepartment } from '@/lib/masterData'
 
 const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? '/api'
 
@@ -160,6 +160,21 @@ export function registerFcmTokenRequest(
   })
 }
 
+/** DELETE `/device-tokens` — unregister this browser's FCM token. */
+export interface DeleteDeviceTokenResponse {
+  removed: boolean
+}
+
+export function deleteFcmTokenRequest(
+  authToken: string,
+  fcmToken: string,
+): Promise<DeleteDeviceTokenResponse> {
+  return request<DeleteDeviceTokenResponse>('/device-tokens', authToken, {
+    method: 'DELETE',
+    body: JSON.stringify({ token: fcmToken }),
+  })
+}
+
 export interface PatientPayload {
   file_no_basma: string
   file_no_biruni: string
@@ -283,8 +298,10 @@ function parseConsultationNeeds(raw: unknown): ConsultationType[] {
 }
 
 export function apiToPatient(api: ApiPatient): Patient {
-  const [regGov = '', regCity = ''] = api.family_registry ?? []
-  const [resGov = '', resCity = ''] = api.residence ?? []
+  const registry = Array.isArray(api.family_registry) ? api.family_registry : []
+  const residence = Array.isArray(api.residence) ? api.residence : []
+  const [regGov = '', regCity = ''] = registry.map(String)
+  const [resGov = '', resCity = ''] = residence.map(String)
   return {
     fileNoBasma: api.file_no_basma,
     fileNoBiruni: api.file_no_biruni || '—',
@@ -447,9 +464,7 @@ export async function fetchDoctorsRequest(token: string, department?: Department
 }
 
 const DEPT_API: Record<Department, string> = DEPT_TO_API
-
-/** Department slug sent in POST `/check-ins` bodies. */
-const CHECKIN_DEPT_API: Record<Department, string> = DEPT_TO_API
+const DAY_CARE_SLUGS = ['daycare', 'day_care'] as const
 
 function resolveDept(value?: string): Department {
   return deptCodeToDepartment(value)
@@ -609,13 +624,29 @@ export function parseDisplayQueues(res: unknown): Record<Department, QueueRow[]>
   return result
 }
 
-export async function fetchQueuesRequest(token: string, department: Department): Promise<QueueRow[]> {
-  const slug = DEPT_API[department]
-  const res = await request<unknown>(`/queues?department=${slug}`, token, { method: 'GET' })
+export async function fetchQueuesRequest(
+  token: string,
+  department: Department,
+  departmentApiCode?: string,
+): Promise<QueueRow[]> {
+  const slug = departmentApiCode || DEPT_API[department]
+  const res = await request<unknown>(
+    `/queues?perPage=20&department=${encodeURIComponent(slug)}`,
+    token,
+    { method: 'GET' },
+  )
   let rows = parseDepartmentQueues(res)
   if (department === 'dayCare' && rows.length === 0) {
-    const fallback = await request<unknown>('/queues?department=day_care', token, { method: 'GET' })
-    rows = parseDepartmentQueues(fallback)
+    for (const alt of DAY_CARE_SLUGS) {
+      if (alt === slug) continue
+      const fallback = await request<unknown>(
+        `/queues?perPage=20&department=${alt}`,
+        token,
+        { method: 'GET' },
+      )
+      rows = parseDepartmentQueues(fallback)
+      if (rows.length) break
+    }
   }
   return rows
 }
@@ -635,11 +666,13 @@ export interface ApiTokenResponse {
   number: string
   patient_file_no: string
   department: string
-  issue_time: string
+  issue_time?: string
+  queue_date?: string
   status: string
   is_emergency?: boolean
   visible_to_guardian?: boolean
   pending_data?: boolean
+  check_in_id?: number | string
 }
 
 function parseTokenResponse(res: unknown): ApiTokenResponse {
@@ -654,11 +687,11 @@ function parseTokenResponse(res: unknown): ApiTokenResponse {
 export function apiToToken(api: ApiTokenResponse): Token {
   return {
     id: String(api.id),
-    number: api.number,
-    patientFileNo: api.patient_file_no,
+    number: String(api.number ?? ''),
+    patientFileNo: String(api.patient_file_no ?? ''),
     department: resolveDept(api.department),
-    issueTime: api.issue_time,
-    status: api.status as TokenStatus,
+    issueTime: String(api.issue_time || api.queue_date || ''),
+    status: (api.status as TokenStatus) || 'waiting',
     isEmergency: Boolean(api.is_emergency),
     visibleToGuardian: api.visible_to_guardian ?? true,
     pendingData: api.pending_data,
@@ -691,6 +724,8 @@ export function cancelTokenRequest(authToken: string, tokenId: string): Promise<
 export interface CheckInInput {
   patientFileNo?: string
   department: Department
+  /** Exact `/master/departments` code when available (e.g. `daycare`). */
+  departmentApiCode?: string
   visitReason: string
   method: CheckInMethod
   isEmergency?: boolean
@@ -723,13 +758,15 @@ export interface EmergencyQuickCheckInBody {
 export type CheckInRequestBody = NormalCheckInBody | EmergencyQuickCheckInBody
 
 export function buildCheckInBody(input: CheckInInput): CheckInRequestBody {
-  const department = CHECKIN_DEPT_API[input.department]
+  const department = input.departmentApiCode || apiDepartmentCode(input.department) || 'clinic'
+  const method = input.method === 'scan' ? 'scan' : 'manual'
+  const visitReason = input.visitReason.trim() || 'متابعة'
   if (input.quickCreate) {
     return {
       department,
-      method: input.method,
+      method,
       is_emergency: true,
-      visit_reason: input.visitReason,
+      visit_reason: visitReason,
       quick_create: {
         file_no_basma: input.quickCreate.fileNoBasma,
         first_name: input.quickCreate.firstName,
@@ -738,10 +775,10 @@ export function buildCheckInBody(input: CheckInInput): CheckInRequestBody {
     }
   }
   const body: NormalCheckInBody = {
-    patient_file_no: input.patientFileNo ?? '',
+    patient_file_no: String(input.patientFileNo ?? '').trim(),
     department,
-    visit_reason: input.visitReason,
-    method: input.method,
+    visit_reason: visitReason,
+    method,
   }
   if (input.isEmergency) body.is_emergency = true
   return body
@@ -766,11 +803,24 @@ export interface ApiCheckInResponse {
   patient: ApiPatient
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+}
+
 function parseCheckInResponse(res: unknown): ApiCheckInResponse {
-  if (res && typeof res === 'object' && 'data' in res) {
-    return (res as { data: ApiCheckInResponse }).data
+  const root = asRecord(res)
+  const nested = root ? asRecord(root.data) : null
+  const payload = nested && (nested.check_in || nested.token || nested.patient) ? nested : root
+  if (!payload) {
+    throw new ApiError(0, 'invalid_check_in_response')
   }
-  return res as ApiCheckInResponse
+  const check_in = asRecord(payload.check_in) as unknown as ApiCheckInRecord | null
+  const token = asRecord(payload.token) as unknown as ApiTokenResponse | null
+  const patient = asRecord(payload.patient) as unknown as ApiPatient | null
+  if (!check_in || !token || !patient) {
+    throw new ApiError(0, 'invalid_check_in_response')
+  }
+  return { check_in, token, patient }
 }
 
 export function mapCheckInResponse(
@@ -784,38 +834,46 @@ export function mapCheckInResponse(
 } {
   const patient = apiToPatient(data.patient)
   const token = apiToToken(data.token)
-  const ci = data.check_in
-  const dept = requestDept ?? resolveDept(ci.department ?? data.token.department)
+  const mapped = apiToCheckIn(data.check_in)
+  const dept = requestDept ?? mapped?.department ?? resolveDept(data.check_in.department ?? data.token.department)
   token.department = dept
-  const checkIn: CheckIn = {
-    id: String(ci.id),
-    patientFileNo: ci.patient_file_no,
-    arrivalTime: ci.arrival_time,
-    department: dept,
-    visitReason: ci.visit_reason,
-    method: ci.method as CheckInMethod,
-    isEmergency: Boolean(ci.is_emergency),
-    emergencyReason: ci.emergency_reason,
-    receptionStaffId: String(ci.reception_staff_id ?? ''),
-  }
+  const checkIn: CheckIn = mapped
+    ? { ...mapped, department: dept }
+    : {
+        id: String(data.check_in.id),
+        patientFileNo: String(data.check_in.patient_file_no ?? ''),
+        arrivalTime: String(data.check_in.arrival_time ?? token.issueTime),
+        department: dept,
+        visitReason: data.check_in.visit_reason || 'متابعة',
+        method: data.check_in.method === 'scan' ? 'scan' : 'manual',
+        isEmergency: Boolean(data.check_in.is_emergency),
+        emergencyReason: data.check_in.emergency_reason ?? undefined,
+        receptionStaffId: String(data.check_in.reception_staff_id ?? ''),
+      }
   return { token, checkIn, patient, row: { token, patient, checkIn } }
 }
 
 export async function createCheckInRequest(authToken: string, input: CheckInInput): Promise<ApiCheckInResponse> {
+  const body = buildCheckInBody(input)
+  console.log('[Check-in] POST /check-ins', body)
   const res = await request<unknown>('/check-ins', authToken, {
     method: 'POST',
-    body: JSON.stringify(buildCheckInBody(input)),
+    body: JSON.stringify(body),
   })
+  console.log('[Check-in] الاستجابة:', res)
   return parseCheckInResponse(res)
 }
 
-export function apiToCheckIn(api: ApiCheckInRecord): CheckIn {
+export function apiToCheckIn(api: ApiCheckInRecord | null | undefined): CheckIn | null {
+  if (!api || typeof api !== 'object') return null
   const methodRaw = String(api.method ?? '').toLowerCase()
   const method: CheckInMethod = methodRaw === 'scan' ? 'scan' : 'manual'
+  const fileNo = String(api.patient_file_no ?? '').trim()
+  if (!fileNo && api.id == null) return null
   return {
-    id: String(api.id),
-    patientFileNo: api.patient_file_no,
-    arrivalTime: api.arrival_time,
+    id: String(api.id ?? `${fileNo}-${api.arrival_time ?? ''}`),
+    patientFileNo: fileNo,
+    arrivalTime: String(api.arrival_time ?? ''),
     department: resolveDept(api.department),
     visitReason: api.visit_reason ?? '',
     method,
@@ -825,12 +883,63 @@ export function apiToCheckIn(api: ApiCheckInRecord): CheckIn {
   }
 }
 
+/** Keep the latest check-in per patient file (active list, no duplicate rows). */
+export function uniqueLatestCheckInsByPatient(rows: CheckIn[] | null | undefined): CheckIn[] {
+  if (!Array.isArray(rows)) return []
+  const best = new Map<string, CheckIn>()
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const key = String(row.patientFileNo ?? '').trim()
+    if (!key) continue
+    const prev = best.get(key)
+    if (!prev || String(row.arrivalTime ?? '') > String(prev.arrivalTime ?? '')) best.set(key, row)
+  }
+  return [...best.values()].sort((a, b) => String(b.arrivalTime ?? '').localeCompare(String(a.arrivalTime ?? '')))
+}
+
 export interface PatientCheckInsListResponse {
   data: CheckIn[]
   page: number
   perPage: number
   lastPage: number
   total: number
+}
+
+function parseCheckInsListResponse(res: unknown, perPage: number): PatientCheckInsListResponse {
+  const mapRows = (raw: unknown[]): CheckIn[] =>
+    raw.map((row) => apiToCheckIn(row as ApiCheckInRecord)).filter((c): c is CheckIn => c != null)
+
+  if (Array.isArray(res)) {
+    const data = mapRows(res)
+    return { data, page: 1, perPage: data.length, lastPage: 1, total: data.length }
+  }
+  if (!res || typeof res !== 'object') {
+    return { data: [], page: 1, perPage, lastPage: 1, total: 0 }
+  }
+  const obj = res as Record<string, unknown>
+  const rows = Array.isArray(obj.data) ? obj.data : []
+  const data = mapRows(rows)
+  return {
+    data,
+    page: Number(obj.page) || 1,
+    perPage: Number(obj.perPage) || perPage,
+    lastPage: Number(obj.lastPage) || 1,
+    total: Number(obj.total) || data.length,
+  }
+}
+
+/** GET `/check-ins?perPage=&page=` — paginated check-in list. */
+export async function fetchCheckInsRequest(
+  token: string,
+  perPage = 15,
+  page = 1,
+): Promise<PatientCheckInsListResponse> {
+  const res = await request<unknown>(
+    `/check-ins?perPage=${perPage}&page=${page}`,
+    token,
+    { method: 'GET' },
+  )
+  return parseCheckInsListResponse(res, perPage)
 }
 
 /** GET `/patients/{fileNo}/check-ins?perPage=` — visit / check-in history for a patient. */
@@ -844,22 +953,7 @@ export async function fetchPatientCheckInsRequest(
     token,
     { method: 'GET' },
   )
-  if (Array.isArray(res)) {
-    const data = (res as ApiCheckInRecord[]).map(apiToCheckIn)
-    return { data, page: 1, perPage: data.length, lastPage: 1, total: data.length }
-  }
-  if (!res || typeof res !== 'object') {
-    return { data: [], page: 1, perPage, lastPage: 1, total: 0 }
-  }
-  const obj = res as Record<string, unknown>
-  const rows = Array.isArray(obj.data) ? (obj.data as ApiCheckInRecord[]) : []
-  return {
-    data: rows.map(apiToCheckIn),
-    page: Number(obj.page) || 1,
-    perPage: Number(obj.perPage) || perPage,
-    lastPage: Number(obj.lastPage) || 1,
-    total: Number(obj.total) || rows.length,
-  }
+  return parseCheckInsListResponse(res, perPage)
 }
 
 const CHECKIN_FIELD_MAP: Record<string, string> = {
@@ -994,6 +1088,22 @@ export async function createAppointmentRequest(
 
 export async function cancelAppointmentRequest(token: string, appointmentId: string): Promise<ApiAppointment> {
   const res = await request<unknown>(`/appointments/${encodeURIComponent(appointmentId)}/cancel`, token, {
+    method: 'PATCH',
+  })
+  return parseAppointmentResponse(res)
+}
+
+/** PATCH `/appointments/{id}/confirm` */
+export async function confirmAppointmentRequest(token: string, appointmentId: string): Promise<ApiAppointment> {
+  const res = await request<unknown>(`/appointments/${encodeURIComponent(appointmentId)}/confirm`, token, {
+    method: 'PATCH',
+  })
+  return parseAppointmentResponse(res)
+}
+
+/** PATCH `/appointments/{id}/complete` */
+export async function completeAppointmentRequest(token: string, appointmentId: string): Promise<ApiAppointment> {
+  const res = await request<unknown>(`/appointments/${encodeURIComponent(appointmentId)}/complete`, token, {
     method: 'PATCH',
   })
   return parseAppointmentResponse(res)
@@ -1162,15 +1272,19 @@ function normalizeNotificationType(raw: string): NotificationType {
   return 'info'
 }
 
-export function apiToNotification(api: ApiNotificationItem): AppNotification {
+export function apiToNotification(api: ApiNotificationItem): AppNotification | null {
+  if (!api || typeof api !== 'object') return null
+  const rawId = api.id
+  const id = rawId != null && String(rawId).trim() !== '' ? String(rawId).trim() : ''
+  if (!id || id === 'undefined' || id === 'null') return null
   const relatedFile = api.related_patient_file_no?.trim()
   const relatedRequest =
     api.related_request_id != null && String(api.related_request_id).trim() !== ''
       ? String(api.related_request_id)
       : undefined
   return {
-    id: String(api.id),
-    userId: String(api.user_id),
+    id,
+    userId: String(api.user_id ?? ''),
     type: normalizeNotificationType(String(api.type ?? 'info')),
     kind: api.kind ? String(api.kind) : undefined,
     message: String(api.message ?? ''),
@@ -1181,6 +1295,29 @@ export function apiToNotification(api: ApiNotificationItem): AppNotification {
   }
 }
 
+/** Backend notification id for PATCH /notifications/{id}/read — skip local/generated ids. */
+export function resolveNotificationApiId(id: string | number | null | undefined): string | null {
+  if (id == null) return null
+  const s = String(id).trim()
+  if (!s || s === 'undefined' || s === 'null' || s.startsWith('nt_') || s.startsWith('fcm_')) return null
+  return s
+}
+
+/** PATCH `/notifications/{id}/read` */
+export async function markNotificationReadRequest(token: string, notificationId: string): Promise<void> {
+  const id = resolveNotificationApiId(notificationId)
+  if (!id) throw new ApiError(400, 'invalid_notification_id')
+  await request<void>(`/notifications/${encodeURIComponent(id)}/read`, token, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_read: true }),
+  })
+}
+
+/** PATCH `/notifications/read-all` */
+export async function markAllNotificationsReadRequest(token: string): Promise<void> {
+  await request<void>('/notifications/read-all', token, { method: 'PATCH' })
+}
+
 /** GET `/notifications?perPage=` */
 export async function fetchNotificationsRequest(
   token: string,
@@ -1188,7 +1325,7 @@ export async function fetchNotificationsRequest(
 ): Promise<NotificationsListResponse> {
   const res = await request<unknown>(`/notifications?perPage=${perPage}`, token, { method: 'GET' })
   if (Array.isArray(res)) {
-    const data = (res as ApiNotificationItem[]).map(apiToNotification)
+    const data = (res as ApiNotificationItem[]).map(apiToNotification).filter((n): n is AppNotification => n != null)
     return { data, page: 1, perPage: data.length, lastPage: 1, total: data.length }
   }
   if (!res || typeof res !== 'object') {
@@ -1196,8 +1333,9 @@ export async function fetchNotificationsRequest(
   }
   const obj = res as Record<string, unknown>
   const rows = Array.isArray(obj.data) ? (obj.data as ApiNotificationItem[]) : []
+  const data = rows.map(apiToNotification).filter((n): n is AppNotification => n != null)
   return {
-    data: rows.map(apiToNotification),
+    data,
     page: Number(obj.page) || 1,
     perPage: Number(obj.perPage) || perPage,
     lastPage: Number(obj.lastPage) || 1,

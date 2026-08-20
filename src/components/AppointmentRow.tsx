@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { CalendarDays, Clock, X } from 'lucide-react'
+import { CalendarDays, CheckCircle2, Clock, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useStore } from '@/store/useStore'
@@ -19,19 +19,48 @@ export function AppointmentRow({
   appointment,
   showCancel,
   onCancelled,
+  onConfirmed,
+  onCompleted,
 }: {
   appointment: Appointment
   showCancel?: boolean
   onCancelled?: (appointment: Appointment) => void
+  onConfirmed?: (appointment: Appointment) => void
+  onCompleted?: (appointment: Appointment) => void
 }) {
   const cancelAppointment = useStore((s) => s.cancelAppointment)
+  const confirmAppointment = useStore((s) => s.confirmAppointment)
+  const completeAppointment = useStore((s) => s.completeAppointment)
   const pushToast = useStore((s) => s.pushToast)
   const { getDepartmentLabel } = useMasterData()
   const [cancelling, setCancelling] = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const [completing, setCompleting] = useState(false)
 
   const doctor = appointment.doctorName
   const meta = statusMeta[appointment.status]
   const patientLabel = appointment.patientName ?? appointment.patientFileNo
+  const busy = confirming || cancelling || completing
+
+  const handleConfirm = async () => {
+    setConfirming(true)
+    const updated = await confirmAppointment(appointment.id)
+    setConfirming(false)
+    if (updated) {
+      onConfirmed?.(updated)
+      pushToast({ variant: 'success', title: ar.appt.confirmSuccess })
+    }
+  }
+
+  const handleComplete = async () => {
+    setCompleting(true)
+    const updated = await completeAppointment(appointment.id)
+    setCompleting(false)
+    if (updated) {
+      onCompleted?.(updated)
+      pushToast({ variant: 'success', title: ar.appt.completeSuccess })
+    }
+  }
 
   const handleCancel = async () => {
     setCancelling(true)
@@ -59,10 +88,28 @@ export function AppointmentRow({
         </p>
         {appointment.notes && <p className="text-xs text-muted-foreground mt-0.5">{appointment.notes}</p>}
       </div>
-      {showCancel && appointment.status !== 'cancelled' && (
-        <Button size="sm" variant="ghost" disabled={cancelling} onClick={() => void handleCancel()}>
+      {appointment.status === 'scheduled' && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-primary bg-background text-primary hover:bg-primary-soft hover:text-primary"
+          disabled={busy}
+          onClick={() => void handleConfirm()}
+        >
+          <CheckCircle2 className="h-4 w-4" />
+          {ar.appt.confirmAppointment}
+        </Button>
+      )}
+      {showCancel && appointment.status === 'scheduled' && (
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => void handleCancel()}>
           <X className="h-4 w-4" />
           {ar.appt.cancel}
+        </Button>
+      )}
+      {appointment.status === 'confirmed' && (
+        <Button size="sm" disabled={busy} onClick={() => void handleComplete()}>
+          <CheckCircle2 className="h-4 w-4" />
+          {ar.appt.completeAppointment}
         </Button>
       )}
     </div>

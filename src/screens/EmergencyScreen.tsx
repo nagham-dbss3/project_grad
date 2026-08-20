@@ -22,7 +22,6 @@ export function EmergencyScreen() {
   const getPatient = useStore((s) => s.getPatient)
   const issueToken = useStore((s) => s.issueToken)
   const pushToast = useStore((s) => s.pushToast)
-  const pushNotification = useStore((s) => s.pushNotification)
   const consultRequests = useStore((s) => s.consultRequests)
   const { departmentOptions, getDepartmentLabel } = useMasterData()
 
@@ -127,12 +126,6 @@ export function EmergencyScreen() {
       return
     }
     setFieldErrors({})
-    pushNotification({
-      type: 'alert',
-      message: `حالة إسعافية في ${getDepartmentLabel(department)} — رمز ${result.token.number}`,
-      relatedPatientFileNo: result.patient.fileNoBasma,
-      timestamp: new Date().toISOString(),
-    })
     pushToast({ variant: 'warning', title: ar.emergency.pinned, description: ar.emergency.notified })
     setFileNo(result.patient.fileNoBasma)
     setPreviewPatient(result.patient)
