@@ -65,7 +65,7 @@ export function fcmToPushFields(
   const rawId = data.notification_id ?? data.notificationId ?? data.id
 
   return {
-    id: rawId,
+    ...(rawId ? { id: rawId } : {}),
     type: notificationTypeFromData(data),
     kind: data.kind,
     message,
