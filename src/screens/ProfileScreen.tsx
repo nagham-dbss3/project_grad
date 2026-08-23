@@ -5,6 +5,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/misc'
 import { PageHeader } from '@/components/PageHeader'
+import { ChangePasswordCard } from '@/components/ChangePasswordCard'
 import { useStore } from '@/store/useStore'
 import { fetchMe, logoutRequest, ApiError } from '@/lib/api'
 import { unregisterFcmTokenFromBackend } from '@/lib/fcmTokenService'
@@ -75,6 +76,8 @@ export function ProfileScreen() {
           </div>
         </CardContent>
       </Card>
+
+      <ChangePasswordCard />
 
       <Button variant="destructive" className="w-full" onClick={handleLogout}>
         <LogOut className="h-4 w-4" />

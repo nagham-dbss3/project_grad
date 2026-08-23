@@ -7,6 +7,7 @@ import { DepartmentLane, deptIcon } from '@/components/DepartmentLane'
 import { useStore } from '@/store/useStore'
 import { useMasterData } from '@/lib/useMasterData'
 import { ar } from '@/i18n/ar'
+import { unlockAudio } from '@/lib/audio'
 import type { Department } from '@/mock/types'
 
 export function QueueScreen() {
@@ -32,6 +33,7 @@ export function QueueScreen() {
     async (tokenId: string) => {
       const row = Object.values(queues).flat().find((r) => r.token.id === tokenId)
       if (!row) return
+      unlockAudio()
       const ok = await callToken(tokenId)
       if (!ok) return
       const p = row.patient ?? getPatient(row.token.patientFileNo)

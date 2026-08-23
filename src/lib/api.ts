@@ -143,6 +143,20 @@ export function logoutRequest(token: string): Promise<void> {
   return request<void>('/auth/logout', token, { method: 'POST' })
 }
 
+export interface ChangePasswordBody {
+  current_password: string
+  password: string
+  password_confirmation: string
+}
+
+/** POST `/auth/change-password` */
+export function changePasswordRequest(token: string, body: ChangePasswordBody): Promise<void> {
+  return request<void>('/auth/change-password', token, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+}
+
 /** Register the device FCM token with the Backend (POST /device-tokens). */
 export interface RegisterDeviceTokenResponse {
   id: number

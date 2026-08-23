@@ -14,6 +14,7 @@ import { clearAuthSession, saveAuthSession } from '@/lib/authStorage'
 import { emptyQueues, enrichAllQueues, filterActiveQueues, mergePatients } from '@/lib/selectors'
 import { hasActiveCheckInToday } from '@/lib/patientVisit'
 import { apiDepartmentCode } from '@/lib/masterData'
+import { announcePatientToken, unlockAudio } from '@/lib/audio'
 import { ar } from '@/i18n/ar'
 import type { QueueRow } from '@/lib/selectors'
 import {
@@ -587,9 +588,11 @@ export const useStore = create<StoreState>((set, get) => ({
       get().pushToast({ variant: 'warning', title: 'الطوابير', description: 'يجب إنهاء خدمة المريض المستدعى أولاً.' })
       return false
     }
+    unlockAudio()
     try {
       const updated = await callTokenRequest(authToken, tokenId)
       set(applyTokenUpdate(tokenId, updated))
+      announcePatientToken(updated.number || target.number, updated.department)
       return true
     } catch (err) {
       get().pushToast({ variant: 'error', title: 'الطوابير', description: tokenActionError(err) })

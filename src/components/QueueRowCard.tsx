@@ -17,6 +17,7 @@ import { patientConsultNeeds } from '@/lib/consultRequests'
 import { useLiveNow } from '@/hooks/useLiveNow'
 import { ar } from '@/i18n/ar'
 import { formatTime, formatWait, formatAge, cn } from '@/lib/utils'
+import { unlockAudio } from '@/lib/audio'
 import type { QueueRow } from '@/lib/selectors'
 
 /** Queue card matching the reference layout: name · consults · token badge · meta · status · actions. */
@@ -97,6 +98,7 @@ export function QueueRowCard({
       pushToast({ variant: 'warning', title: ar.nav.queue, description: ar.checkin.waitForServed })
       return
     }
+    unlockAudio()
     if (onCallToken) {
       await onCallToken(token.id)
       return
