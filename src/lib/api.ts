@@ -149,10 +149,10 @@ export interface ChangePasswordBody {
   password_confirmation: string
 }
 
-/** POST `/auth/change-password` */
+/** PATCH `/auth/change-password` */
 export function changePasswordRequest(token: string, body: ChangePasswordBody): Promise<void> {
   return request<void>('/auth/change-password', token, {
-    method: 'POST',
+    method: 'PATCH',
     body: JSON.stringify(body),
   })
 }
